@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vehicle Profile — MotorIndex</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;0,900;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <header class="header">
+    <div class="header-inner">
+      <a href="index.html" class="logo">
+        <span class="logo-mark"><span class="logo-m">M</span><span class="logo-i">I</span></span>
+      </a>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+        <svg class="theme-icon theme-icon--sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/>
+          <line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/>
+          <line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <svg class="theme-icon theme-icon--moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="car-main">
+    <div class="page-inner">
+
+      <nav class="breadcrumb" id="breadcrumb" aria-label="Breadcrumb">
+        <a href="index.html" class="breadcrumb-link">Home</a>
+        <span class="breadcrumb-sep">›</span>
+        <a href="#" class="breadcrumb-link" id="breadcrumbMakeLink">—</a>
+        <span class="breadcrumb-sep">›</span>
+        <a href="#" class="breadcrumb-link" id="breadcrumbModelLink">—</a>
+        <span class="breadcrumb-sep">›</span>
+        <span class="breadcrumb-current" id="breadcrumbYear">—</span>
+      </nav>
+
+      <!-- Car hero -->
+      <div class="car-hero" id="carHero">
+        <div class="car-hero-text">
+          <p class="car-year-badge" id="carYear">—</p>
+          <h1 class="car-title" id="carTitle">Loading vehicle...</h1>
+          <div class="car-meta" id="carMeta"></div>
+          <div class="car-rating-row" id="carRatingRow"></div>
+        </div>
+        <div class="car-hero-image" id="carHeroImage">
+          <div class="car-image-placeholder" id="carImagePlaceholder">
+            <svg viewBox="0 0 120 60" fill="none" xmlns="http://www.w3.org/2000/svg" class="car-silhouette">
+              <path d="M10 40 L20 20 L35 14 L65 12 L85 18 L100 28 L110 35 L110 42 L10 42 Z" stroke="currentColor" stroke-width="2" fill="none"/>
+              <circle cx="28" cy="43" r="7" stroke="currentColor" stroke-width="2" fill="none"/>
+              <circle cx="88" cy="43" r="7" stroke="currentColor" stroke-width="2" fill="none"/>
+              <path d="M35 14 L38 28 L75 28 L80 18" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            </svg>
+          </div>
+          <img class="car-image hidden" id="carImage" alt="" loading="lazy">
+        </div>
+      </div>
+
+      <!-- Recall banner -->
+      <div class="recall-banner hidden" id="recallBanner">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <span id="recallBannerText"></span>
+        <a href="#recalls" class="recall-banner-link">View recalls ↓</a>
+      </div>
+
+      <!-- Tab navigation -->
+      <nav class="tab-nav" id="tabNav" role="tablist" aria-label="Vehicle sections">
+        <button class="tab-btn active" data-tab="overview" role="tab" aria-selected="true">
+          <span>OVERVIEW</span>
+        </button>
+        <button class="tab-btn" data-tab="specs" role="tab" aria-selected="false">
+          <span>SPECIFICATIONS</span>
+        </button>
+        <button class="tab-btn" data-tab="maintenance" role="tab" aria-selected="false">
+          <span>MAINTENANCE</span>
+        </button>
+        <button class="tab-btn" data-tab="videos" role="tab" aria-selected="false">
+          <span>VIDEOS</span>
+        </button>
+      </nav>
+
+      <!-- Tab: Overview -->
+      <div class="tab-panel active" id="tab-overview" role="tabpanel">
+        <div class="section-header">
+          <span class="chapter-num">01</span>
+          <h2 class="section-title">OVERVIEW</h2>
+          <div class="section-rule"></div>
+        </div>
+
+        <div class="overview-grid">
+          <div class="overview-main">
+            <div class="info-block" id="overviewDesc">
+              <div class="skeleton-text">
+                <div class="skeleton-line"></div>
+                <div class="skeleton-line"></div>
+                <div class="skeleton-line short"></div>
+              </div>
+            </div>
+
+            <div class="safety-block" id="safetyBlock"></div>
+          </div>
+
+          <div class="overview-aside">
+            <div class="quick-facts" id="quickFacts">
+              <div class="quick-facts-header">QUICK FACTS</div>
+              <div class="quick-facts-body" id="quickFactsBody">
+                <div class="skeleton-text">
+                  <div class="skeleton-line"></div>
+                  <div class="skeleton-line"></div>
+                  <div class="skeleton-line"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="external-links" id="externalLinks"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Specs -->
+      <div class="tab-panel" id="tab-specs" role="tabpanel">
+        <div class="section-header">
+          <span class="chapter-num">02</span>
+          <h2 class="section-title">SPECIFICATIONS</h2>
+          <div class="section-rule"></div>
+        </div>
+        <div class="specs-content" id="specsContent">
+          <div class="loading-state">
+            <div class="loading-spinner"></div>
+            <p>Loading specifications...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Maintenance -->
+      <div class="tab-panel" id="tab-maintenance" role="tabpanel">
+        <div class="section-header">
+          <span class="chapter-num">03</span>
+          <h2 class="section-title">MAINTENANCE SCHEDULE</h2>
+          <div class="section-rule"></div>
+        </div>
+        <div class="maintenance-content" id="maintenanceContent">
+          <div class="loading-state">
+            <div class="loading-spinner"></div>
+            <p>Loading maintenance schedule...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Videos -->
+      <div class="tab-panel" id="tab-videos" role="tabpanel">
+        <div class="section-header">
+          <span class="chapter-num">04</span>
+          <h2 class="section-title">VIDEO GUIDES</h2>
+          <div class="section-rule"></div>
+        </div>
+        <p class="videos-intro">Curated video searches for this vehicle. Links open YouTube.</p>
+        <div class="videos-grid" id="videosGrid"></div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Recalls section (outside tabs for anchor linking) -->
+  <div class="recalls-section page-inner hidden" id="recallsSection">
+    <div class="section-header">
+      <span class="chapter-num" style="color:var(--accent)">!</span>
+      <h2 class="section-title">RECALL NOTICES</h2>
+      <div class="section-rule"></div>
+    </div>
+    <div id="recallsList"></div>
+  </div>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span class="footer-logo"><span class="footer-logo-motor">MOTOR</span><span class="footer-logo-index">INDEX</span></span>
+      <span class="footer-sep">—</span>
+      <span class="footer-copy">Data sourced from NHTSA · Wikipedia · Manufacturer specifications</span>
+    </div>
+  </footer>
+
+  <script src="js/data.js"></script>
+  <script src="js/theme.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/maintenance.js"></script>
+  <script src="js/car.js"></script>
+</body>
+</html>
