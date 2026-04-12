@@ -89,30 +89,22 @@ function switchTab(tab) {
 
 // ── Main data load ─────────────────────────────────────────────
 (async function init() {
-  // Run fetches in parallel
-  const [wiki, ratings, recalls] = await Promise.allSettled([
+  // Run all fetches in parallel
+  const [wiki, ratings, recalls, canSpecs] = await Promise.allSettled([
     API.getWikiInfo(make, model, year),
     API.getSafetyRatings(year, make, model),
     API.getRecalls(make, model, year),
+    API.getCanadianSpecs(year, make, model),
   ]);
 
-  renderOverview(
-    wiki.status    === 'fulfilled' ? wiki.value    : null,
-    ratings.status === 'fulfilled' ? ratings.value : null,
-  );
+  const wikiVal  = wiki.status      === 'fulfilled' ? wiki.value      : null;
+  const rateVal  = ratings.status   === 'fulfilled' ? ratings.value   : null;
+  const specVal  = canSpecs.status  === 'fulfilled' ? canSpecs.value  : [];
 
-  renderRecallBanner(
-    recalls.status === 'fulfilled' ? recalls.value : []
-  );
-
-  renderQuickFacts(
-    wiki.status    === 'fulfilled' ? wiki.value    : null,
-    ratings.status === 'fulfilled' ? ratings.value : null,
-  );
-
-  renderExternalLinks(
-    wiki.status === 'fulfilled' ? wiki.value : null
-  );
+  renderOverview(wikiVal, rateVal);
+  renderRecallBanner(recalls.status === 'fulfilled' ? recalls.value : []);
+  renderQuickFacts(wikiVal, rateVal, specVal);
+  renderExternalLinks(wikiVal);
 })();
 
 // ── Overview Tab ───────────────────────────────────────────────
@@ -129,37 +121,48 @@ function renderOverview(wiki, ratings) {
       <p>Detailed description data is not available for this vehicle. Visit the manufacturer's website or Wikipedia for more information.</p>`;
   }
 
-  // Car image — fade in smoothly, fallback chain: imageHQ → image → placeholder
+  // Car image — fade in smoothly; fallback chain: imageHQ → image → placeholder
   if (wiki?.image) {
     const imgEl = els.carImage;
-    const urls  = [wiki.imageHQ, wiki.image].filter(Boolean);
-    let   attempt = 0;
+    // Deduplicate: if imageHQ and image are the same URL (both set to commonsImage)
+    // only keep one entry to avoid a redundant network hit on error.
+    const seen = new Set();
+    const urls = [wiki.imageHQ, wiki.image]
+      .filter(u => u && !seen.has(u) && seen.add(u));
+
+    let attempt = 0;
+
+    function showPlaceholder() {
+      imgEl.classList.add('hidden');
+      imgEl.style.opacity = '0';
+      els.carImagePlaceholder.style.display = '';
+    }
 
     function tryLoad() {
-      if (attempt >= urls.length) {
-        imgEl.classList.add('hidden');
-        els.carImagePlaceholder.style.display = '';
-        return;
-      }
+      if (attempt >= urls.length) { showPlaceholder(); return; }
+
+      // Must remove hidden BEFORE setting src so the browser initiates the load
+      imgEl.classList.remove('hidden');
       imgEl.style.opacity = '0';
+      imgEl.style.transition = '';
+      els.carImagePlaceholder.style.display = 'none';
+
       imgEl.src = urls[attempt];
       imgEl.alt = `${year} ${make} ${model}`;
     }
 
-    imgEl.addEventListener('load', () => {
-      imgEl.classList.remove('hidden');
-      els.carImagePlaceholder.style.display = 'none';
-      // Smooth fade-in
+    // Use property assignment so handlers auto-replace on each tryLoad call
+    imgEl.onload = () => {
       requestAnimationFrame(() => {
         imgEl.style.transition = 'opacity 0.5s ease';
         imgEl.style.opacity = '1';
       });
-    }, { once: false });
+    };
 
-    imgEl.addEventListener('error', () => {
+    imgEl.onerror = () => {
       attempt++;
       tryLoad();
-    }, { once: false });
+    };
 
     tryLoad();
   }
@@ -223,6 +226,15 @@ function renderRecallBanner(recalls) {
   els.recallBannerText.textContent = `${n} active recall${n > 1 ? 's' : ''} found for this vehicle.`;
   recallBanner.classList.remove('hidden');
 
+  // Wire up the "View recalls" link to smooth-scroll to the section
+  const link = recallBanner.querySelector('.recall-banner-link');
+  if (link) {
+    link.addEventListener('click', e => {
+      e.preventDefault();
+      els.recallsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
   // Render recalls section
   els.recallsSection.classList.remove('hidden');
   els.recallsList.innerHTML = recalls.map(r => `
@@ -238,21 +250,86 @@ function renderRecallBanner(recalls) {
 }
 
 // ── Quick Facts ────────────────────────────────────────────────
-function renderQuickFacts(wiki, ratings) {
-  const facts = [
-    { key: 'Make',   val: make   },
-    { key: 'Model',  val: model  },
-    { key: 'Year',   val: year   },
-    { key: 'Type',   val: 'Automobile' },
-  ];
-
-  if (ratings?.detail) {
-    const d = ratings.detail;
-    if (d.VehicleDescription) facts.push({ key: 'Variant', val: d.VehicleDescription });
+function renderQuickFacts(wiki, ratings, canSpecs) {
+  // Helper: look up a Canadian spec by partial name match
+  const cs = Array.isArray(canSpecs) ? canSpecs : [];
+  function spec(needle) {
+    const hit = cs.find(s => s.Specs_Name?.toLowerCase().includes(needle.toLowerCase()));
+    return hit?.Specs_Value?.trim() || null;
   }
 
-  if (wiki?.title) {
-    facts.push({ key: 'Source', val: 'Wikipedia' });
+  // ── Pull engine/drivetrain data from NHTSA Canadian Specs ──
+  const dispL      = spec('displacement (l');
+  const cylinders  = spec('number of cylinder') || spec('cylinders');
+  const config     = spec('engine configuration') || spec('configuration');
+  const driveType  = spec('drive type') || spec('drive');
+  const transStyle = spec('transmission style') || spec('transmission type');
+  const transSpeeds= spec('transmission speeds') || spec('speeds');
+  const fuelType   = spec('fuel type - primary') || spec('fuel type');
+
+  // Build human-readable engine string  e.g. "V6, 3.5L"
+  let engineStr = null;
+  if (config || cylinders || dispL) {
+    const parts = [];
+    if (config)    parts.push(config);
+    if (cylinders) parts.push(`${cylinders}-cyl`);
+    if (dispL)     parts.push(`${dispL}L`);
+    engineStr = parts.filter(Boolean).join(', ');
+  }
+
+  // Build transmission string  e.g. "8-speed Automatic"
+  let transStr = null;
+  if (transSpeeds || transStyle) {
+    const parts = [];
+    if (transSpeeds) parts.push(`${transSpeeds}-speed`);
+    if (transStyle)  parts.push(transStyle);
+    transStr = parts.filter(Boolean).join(' ');
+  }
+
+  // ── Try to parse HP / Torque from Wikipedia summary text ──
+  function parseFromText(text, patterns) {
+    if (!text) return null;
+    for (const re of patterns) {
+      const m = text.match(re);
+      if (m) return m[0].trim();
+    }
+    return null;
+  }
+
+  const summaryText = wiki?.summary || '';
+
+  const hp = parseFromText(summaryText, [
+    /\d[\d,]*\s*(?:hp|horsepower|bhp)\b/i,
+    /\d[\d,]*\s*PS\b/,
+  ]);
+
+  const torque = parseFromText(summaryText, [
+    /\d[\d,]*\s*(?:lb-ft|lb·ft|pound-feet|ft·lb|ft-lb)\b/i,
+    /\d[\d,]*\s*N·?m\b/,
+  ]);
+
+  // ── Assemble facts list ──
+  const facts = [
+    { key: 'Make',  val: make  },
+    { key: 'Model', val: model },
+    { key: 'Year',  val: year  },
+  ];
+
+  if (engineStr)  facts.push({ key: 'Engine',       val: engineStr });
+  if (hp)         facts.push({ key: 'Horsepower',   val: hp });
+  if (torque)     facts.push({ key: 'Torque',       val: torque });
+  if (driveType)  facts.push({ key: 'Drivetrain',   val: driveType });
+  if (transStr)   facts.push({ key: 'Transmission', val: transStr });
+  if (fuelType)   facts.push({ key: 'Fuel',         val: fuelType });
+
+  if (ratings?.detail?.VehicleDescription) {
+    facts.push({ key: 'Variant', val: ratings.detail.VehicleDescription });
+  }
+
+  // Show placeholder row when no spec data came back
+  const hasSpecs = engineStr || hp || torque || driveType || transStr || fuelType;
+  if (!hasSpecs) {
+    facts.push({ key: 'Specs', val: 'Not available for this vehicle' });
   }
 
   els.quickFactsBody.innerHTML = facts.map(f => `

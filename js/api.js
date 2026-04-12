@@ -49,19 +49,17 @@ async function _fetch(url, cacheKey, ttlMs = 86400000) {
 // like "2024_Land_Rover_Defender_90.jpg", giving year-accurate results.
 // Wikipedia is still needed for article summary text.
 
-// Words that indicate a file is NOT an exterior car photo
+// Words/phrases whose presence in a Commons filename reliably means
+// the file is NOT an exterior car photo. Keep this list conservative —
+// false exclusions (missing real photos) are worse than false inclusions.
+// In particular, DO NOT add "motor" (blocks "Motor Show" photos) or
+// "engine" (blocks "engine" variant names like "EcoBoost").
 const _IMG_BLOCKLIST = [
-  'logo','badge','emblem','insignia','interior','dashboard','cockpit',
-  'steering','instrument','seat','console','infotainment','screen',
-  'engine','motor','transmission','gearbox','drivetrain',
-  'diagram','cutaway','schematic','blueprint',
-  'advertisement','advert','brochure','poster','flyer','catalog',
-  'map','icon','chart','graph','table',
-  'headlight','taillight','grille','bumper','wheel','tyre','tire',
-  'door','trunk','boot','hood','bonnet','mirror',
-  'factory','plant','assembly','production',
-  'recall','crash','accident','damage','wreck',
-  '.svg','.gif',
+  'logo', 'badge', 'emblem', 'insignia', 'coat of arms',
+  'interior', 'dashboard', 'cockpit', 'cabin view',
+  'diagram', 'cutaway', 'schematic', 'blueprint', 'cross-section',
+  'brochure', 'advertisement', 'flyer',
+  '.svg', '.gif',
 ];
 
 /**
@@ -69,11 +67,13 @@ const _IMG_BLOCKLIST = [
  * Returns the best image URL found, or null.
  */
 async function _getCommonsImage(make, model, yr) {
-  // Build queries from most specific to broadest
+  // Build queries from most specific to broadest.
+  // The no-year fallback ensures vintage/obscure models still get a photo
+  // even when Commons has nothing tagged with the exact year.
   const queries = [
     `${yr} ${make} ${model}`,
     `${make} ${model} ${yr}`,
-    `${yr} ${model} ${make}`,
+    `${make} ${model}`,
   ];
 
   for (const q of queries) {
