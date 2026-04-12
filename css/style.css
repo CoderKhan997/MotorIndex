@@ -170,8 +170,13 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
   text-align: center;
   overflow: hidden;
   min-height: calc(100vh - 60px);
-  border-bottom: 1px solid rgba(147, 197, 253, 0.12);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+[data-theme="dark"] .hero {
   background: #020407;
+  border-bottom-color: rgba(147, 197, 253, 0.12);
 }
 
 .hero-bg-lines {
