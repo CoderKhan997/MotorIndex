@@ -104,6 +104,11 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
   border-radius: 2px;
   padding: 0 7px;
   flex-shrink: 0;
+  transition: background var(--transition);
+}
+
+[data-theme="dark"] .logo-mark {
+  background: #F0EFEB;
 }
 
 .logo-m {
@@ -113,6 +118,12 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
   text-decoration-color: #ffffff;
   text-underline-offset: 2px;
   text-decoration-thickness: 2px;
+  transition: color var(--transition);
+}
+
+[data-theme="dark"] .logo-m {
+  color: #111111;
+  text-decoration-color: #111111;
 }
 
 .logo-i {
