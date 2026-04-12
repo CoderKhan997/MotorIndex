@@ -62,6 +62,133 @@ const _IMG_BLOCKLIST = [
   '.svg', '.gif',
 ];
 
+// ── Wikipedia infobox spec parser ────────────────────────────
+//
+// Fetches the raw wikitext for a Wikipedia article, extracts the
+// {{Infobox automobile}} block, and parses key spec fields.
+// Only the small parsed-spec object is stored in cache (not raw wikitext).
+
+/**
+ * Clean a raw wikitext field value into plain text.
+ */
+function _cleanWikiVal(raw) {
+  if (!raw) return '';
+  return raw
+    // {{ubl|…}} / {{plainlist|…}} / {{hlist|…}}  →  "item1, item2"
+    .replace(/\{\{(?:ubl|plainlist|unbulleted[ _]list|hlist)\s*\|([\s\S]*?)\}\}/gi,
+      (_, c) => c.split('|').map(s => s.replace(/\n/g, ' ').trim()).filter(Boolean).join(', '))
+    // {{convert|num|unit|…}}  →  "num unit"
+    .replace(/\{\{(?:convert|cvt)\|(\d[\d.,–-]*)\|([^|}\s,]+)[^}]*\}\}/gi, '$1 $2')
+    // [[Target|Display]]  or  [[Target]]
+    .replace(/\[\[(?:[^\]|]+\|)?([^\]]+)\]\]/g, '$1')
+    // Remove any remaining templates
+    .replace(/\{\{[^}]*\}\}/g, '')
+    // Strip HTML tags
+    .replace(/<[^>]+>/g, ' ')
+    // Wiki bold/italic markup
+    .replace(/'{2,3}/g, '')
+    // Normalise spaces and punctuation
+    .replace(/\s*,\s*/g, ', ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Parse the {{Infobox automobile}} block out of raw wikitext.
+ * Returns an object keyed by normalised field names.
+ */
+function _parseWikitextInfobox(wikitext) {
+  const specs = {};
+
+  // Find infobox start (handles Infobox automobile / Infobox automotive / etc.)
+  const ibMatch = wikitext.match(/\{\{\s*[Ii]nfobox\s+auto(?:mobile|motive|)?\s*[\n|]/);
+  if (!ibMatch) return specs;
+
+  // Walk to the balanced closing }} so we don't spill into later templates
+  let depth = 0;
+  let end = ibMatch.index;
+  for (let i = ibMatch.index; i < wikitext.length - 1; i++) {
+    if (wikitext[i] === '{' && wikitext[i + 1] === '{') { depth++; i++; }
+    else if (wikitext[i] === '}' && wikitext[i + 1] === '}') {
+      depth--; i++;
+      if (depth <= 0) { end = i + 1; break; }
+    }
+  }
+
+  const block = wikitext.slice(ibMatch.index, end);
+
+  // Parse line-by-line, accumulating multi-line values
+  let key = null;
+  let valLines = [];
+
+  function flush() {
+    if (!key) return;
+    const v = _cleanWikiVal(valLines.join(' '));
+    if (v && v.length < 400) specs[key] = v;
+  }
+
+  for (const line of block.split('\n')) {
+    const m = line.match(/^\s*\|\s*([^=|{}<>\n]+?)\s*=\s*(.*)$/);
+    if (m) {
+      flush();
+      // Normalise key: lowercase, spaces/hyphens → underscores
+      key = m[1].trim().toLowerCase().replace(/[\s\-]+/g, '_');
+      valLines = [m[2].trim()];
+    } else if (key) {
+      valLines.push(line.trim());
+    }
+  }
+  flush();
+
+  return specs;
+}
+
+/**
+ * Fetch and parse the Wikipedia infobox for a known page title.
+ * Caches the small parsed-spec object, NOT the raw wikitext.
+ */
+async function _getWikiSpecs(wikiTitle) {
+  if (!wikiTitle) return {};
+
+  const slug     = wikiTitle.replace(/\s+/g, '_');
+  const cacheKey = `wiki_specs_${slug.toLowerCase()}`;
+
+  // Check caches first
+  if (_cache.has(cacheKey)) return _cache.get(cacheKey);
+  try {
+    const raw = localStorage.getItem('mi_c_' + cacheKey);
+    if (raw) {
+      const { d, t } = JSON.parse(raw);
+      if (Date.now() - t < 86400000) { _cache.set(cacheKey, d); return d; }
+    }
+  } catch (_) {}
+
+  try {
+    // Fetch raw wikitext (NOT via _fetch — we don't want to cache 100 KB blobs)
+    const url = `${WIKI_API}?action=query&titles=${encodeURIComponent(slug)}` +
+      `&prop=revisions&rvslots=main&rvprop=content&format=json&origin=*`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    const page = Object.values(data.query?.pages || {})[0];
+    const wikitext = page?.revisions?.[0]?.slots?.main?.['*']
+                  || page?.revisions?.[0]?.['*']
+                  || '';
+
+    const specs = _parseWikitextInfobox(wikitext);
+
+    // Cache only the small parsed result
+    _cache.set(cacheKey, specs);
+    try {
+      localStorage.setItem('mi_c_' + cacheKey,
+        JSON.stringify({ d: specs, t: Date.now() }));
+    } catch (_) {}
+
+    return specs;
+  } catch { return {}; }
+}
+
 /**
  * Search Wikimedia Commons for a year-accurate exterior photo.
  * Returns the best image URL found, or null.
@@ -361,6 +488,15 @@ const API = {
       imageHQ: commonsImage || wiki?.imageHQ || null,
       url:     wiki?.url     || null,
     };
+  },
+
+  /**
+   * Parse vehicle specs from the Wikipedia infobox for a known article title.
+   * Returns an object with normalised field names from {{Infobox automobile}}.
+   * The caller is responsible for mapping fields to display labels.
+   */
+  async getVehicleSpecs(wikiTitle) {
+    return _getWikiSpecs(wikiTitle);
   },
 
   /** Canadian vehicle specs from NHTSA (supplemental). */

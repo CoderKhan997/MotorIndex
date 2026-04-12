@@ -89,22 +89,36 @@ function switchTab(tab) {
 
 // ── Main data load ─────────────────────────────────────────────
 (async function init() {
-  // Run all fetches in parallel
-  const [wiki, ratings, recalls, canSpecs] = await Promise.allSettled([
+  // Phase 1 — critical content, all in parallel
+  const [wiki, ratings, recalls] = await Promise.allSettled([
     API.getWikiInfo(make, model, year),
     API.getSafetyRatings(year, make, model),
     API.getRecalls(make, model, year),
-    API.getCanadianSpecs(year, make, model),
   ]);
 
-  const wikiVal  = wiki.status      === 'fulfilled' ? wiki.value      : null;
-  const rateVal  = ratings.status   === 'fulfilled' ? ratings.value   : null;
-  const specVal  = canSpecs.status  === 'fulfilled' ? canSpecs.value  : [];
+  const wikiVal = wiki.status    === 'fulfilled' ? wiki.value    : null;
+  const rateVal = ratings.status === 'fulfilled' ? ratings.value : null;
 
   renderOverview(wikiVal, rateVal);
   renderRecallBanner(recalls.status === 'fulfilled' ? recalls.value : []);
-  renderQuickFacts(wikiVal, rateVal, specVal);
   renderExternalLinks(wikiVal);
+
+  // Render Quick Facts with basic info immediately so the box isn't empty
+  renderQuickFacts(wikiVal, rateVal, {}, []);
+
+  // Phase 2 — enrich Quick Facts with infobox specs + NHTSA Canadian specs
+  // Both run in parallel; they don't block Phase 1 rendering above.
+  const [wikiSpecs, canSpecs] = await Promise.allSettled([
+    wikiVal?.title ? API.getVehicleSpecs(wikiVal.title) : Promise.resolve({}),
+    API.getCanadianSpecs(year, make, model),
+  ]);
+
+  renderQuickFacts(
+    wikiVal,
+    rateVal,
+    wikiSpecs.status === 'fulfilled' ? wikiSpecs.value : {},
+    canSpecs.status  === 'fulfilled' ? canSpecs.value  : [],
+  );
 })();
 
 // ── Overview Tab ───────────────────────────────────────────────
@@ -250,86 +264,106 @@ function renderRecallBanner(recalls) {
 }
 
 // ── Quick Facts ────────────────────────────────────────────────
-function renderQuickFacts(wiki, ratings, canSpecs) {
-  // Helper: look up a Canadian spec by partial name match
-  const cs = Array.isArray(canSpecs) ? canSpecs : [];
-  function spec(needle) {
-    const hit = cs.find(s => s.Specs_Name?.toLowerCase().includes(needle.toLowerCase()));
-    return hit?.Specs_Value?.trim() || null;
-  }
+// wikiSpecs  — parsed {{Infobox automobile}} fields (primary, covers all brands)
+// canSpecs   — NHTSA Canadian specs array (fallback, US/Canada vehicles only)
+function renderQuickFacts(wiki, ratings, wikiSpecs, canSpecs) {
+  const ws = (typeof wikiSpecs === 'object' && wikiSpecs !== null) ? wikiSpecs : {};
 
-  // ── Pull engine/drivetrain data from NHTSA Canadian Specs ──
-  const dispL      = spec('displacement (l');
-  const cylinders  = spec('number of cylinder') || spec('cylinders');
-  const config     = spec('engine configuration') || spec('configuration');
-  const driveType  = spec('drive type') || spec('drive');
-  const transStyle = spec('transmission style') || spec('transmission type');
-  const transSpeeds= spec('transmission speeds') || spec('speeds');
-  const fuelType   = spec('fuel type - primary') || spec('fuel type');
-
-  // Build human-readable engine string  e.g. "V6, 3.5L"
-  let engineStr = null;
-  if (config || cylinders || dispL) {
-    const parts = [];
-    if (config)    parts.push(config);
-    if (cylinders) parts.push(`${cylinders}-cyl`);
-    if (dispL)     parts.push(`${dispL}L`);
-    engineStr = parts.filter(Boolean).join(', ');
-  }
-
-  // Build transmission string  e.g. "8-speed Automatic"
-  let transStr = null;
-  if (transSpeeds || transStyle) {
-    const parts = [];
-    if (transSpeeds) parts.push(`${transSpeeds}-speed`);
-    if (transStyle)  parts.push(transStyle);
-    transStr = parts.filter(Boolean).join(' ');
-  }
-
-  // ── Try to parse HP / Torque from Wikipedia summary text ──
-  function parseFromText(text, patterns) {
-    if (!text) return null;
-    for (const re of patterns) {
-      const m = text.match(re);
-      if (m) return m[0].trim();
+  // Helper: try multiple infobox field names, return first hit
+  function wi(...keys) {
+    for (const k of keys) {
+      const v = ws[k];
+      if (v && v.trim() && v !== '—') return v.trim();
     }
     return null;
   }
 
-  const summaryText = wiki?.summary || '';
+  // Helper: look up an NHTSA Canadian spec by partial name match
+  const cs = Array.isArray(canSpecs) ? canSpecs : [];
+  function ca(needle) {
+    const hit = cs.find(s => s.Specs_Name?.toLowerCase().includes(needle.toLowerCase()));
+    return hit?.Specs_Value?.trim() || null;
+  }
 
-  const hp = parseFromText(summaryText, [
-    /\d[\d,]*\s*(?:hp|horsepower|bhp)\b/i,
-    /\d[\d,]*\s*PS\b/,
-  ]);
+  // ── Engine ──────────────────────────────────────────────────
+  // Infobox fields tried in order of specificity
+  let engineStr = wi('engine', 'engine_type', 'engines', 'powertrain');
 
-  const torque = parseFromText(summaryText, [
-    /\d[\d,]*\s*(?:lb-ft|lb·ft|pound-feet|ft·lb|ft-lb)\b/i,
-    /\d[\d,]*\s*N·?m\b/,
-  ]);
+  // Fallback: build from NHTSA Canadian specs
+  if (!engineStr) {
+    const dispL     = ca('displacement (l') || ca('engine displacement (l');
+    const cylinders = ca('number of cylinder') || ca('cylinders');
+    const config    = ca('engine configuration') || ca('configuration');
+    if (config || cylinders || dispL) {
+      engineStr = [config, cylinders ? `${cylinders}-cyl` : null, dispL ? `${dispL}L` : null]
+        .filter(Boolean).join(', ');
+    }
+  }
 
-  // ── Assemble facts list ──
+  // ── Horsepower ──────────────────────────────────────────────
+  let hpStr = wi('horsepower', 'power', 'max_power');
+  if (hpStr && !/hp|kw|ps\b/i.test(hpStr)) hpStr = `${hpStr} hp`;
+
+  // Fallback: regex scan of Wikipedia summary text
+  if (!hpStr && wiki?.summary) {
+    const m = wiki.summary.match(/(\d[\d,–\-]*)\s*(?:hp|horsepower|bhp)\b/i);
+    if (m) hpStr = `${m[1]} hp`;
+  }
+
+  // ── Torque ──────────────────────────────────────────────────
+  let torqueStr = null;
+  const torqueLbFt = wi('torqueft-lbf', 'torqueft_lbf', 'torque_ft_lbf', 'torque_lbft');
+  const torqueNm   = wi('torquenm', 'torque_nm', 'torque');
+  if (torqueLbFt) {
+    torqueStr = /lb|ft/i.test(torqueLbFt) ? torqueLbFt : `${torqueLbFt} lb-ft`;
+  } else if (torqueNm) {
+    torqueStr = /n.?m/i.test(torqueNm) ? torqueNm : `${torqueNm} N·m`;
+  }
+
+  // Fallback: regex scan of Wikipedia summary
+  if (!torqueStr && wiki?.summary) {
+    const m = wiki.summary.match(/(\d[\d,–\-]*)\s*(?:lb-ft|lb·ft|pound-feet|ft·lb)\b/i);
+    if (m) torqueStr = `${m[1]} lb-ft`;
+  }
+
+  // ── Drivetrain ──────────────────────────────────────────────
+  let driveStr = wi('drive_wheel', 'drive_type', 'drivetrain', 'drive');
+  if (!driveStr) driveStr = ca('drive type') || ca('drive');
+
+  // ── Transmission ────────────────────────────────────────────
+  let transStr = wi('transmission', 'gearbox', 'trans');
+  if (!transStr) {
+    const style  = ca('transmission style') || ca('transmission type');
+    const speeds = ca('transmission speeds') || ca('speeds');
+    if (style || speeds) {
+      transStr = [speeds ? `${speeds}-speed` : null, style].filter(Boolean).join(' ');
+    }
+  }
+
+  // ── Fuel type ───────────────────────────────────────────────
+  const fuelStr = wi('fuel_type', 'fuel') || ca('fuel type - primary') || ca('fuel type');
+
+  // ── Assemble ─────────────────────────────────────────────────
   const facts = [
     { key: 'Make',  val: make  },
     { key: 'Model', val: model },
     { key: 'Year',  val: year  },
   ];
 
-  if (engineStr)  facts.push({ key: 'Engine',       val: engineStr });
-  if (hp)         facts.push({ key: 'Horsepower',   val: hp });
-  if (torque)     facts.push({ key: 'Torque',       val: torque });
-  if (driveType)  facts.push({ key: 'Drivetrain',   val: driveType });
-  if (transStr)   facts.push({ key: 'Transmission', val: transStr });
-  if (fuelType)   facts.push({ key: 'Fuel',         val: fuelType });
+  if (engineStr) facts.push({ key: 'Engine',       val: engineStr });
+  if (hpStr)     facts.push({ key: 'Horsepower',   val: hpStr });
+  if (torqueStr) facts.push({ key: 'Torque',        val: torqueStr });
+  if (driveStr)  facts.push({ key: 'Drivetrain',    val: driveStr });
+  if (transStr)  facts.push({ key: 'Transmission',  val: transStr });
+  if (fuelStr)   facts.push({ key: 'Fuel',          val: fuelStr });
 
   if (ratings?.detail?.VehicleDescription) {
     facts.push({ key: 'Variant', val: ratings.detail.VehicleDescription });
   }
 
-  // Show placeholder row when no spec data came back
-  const hasSpecs = engineStr || hp || torque || driveType || transStr || fuelType;
+  const hasSpecs = engineStr || hpStr || torqueStr || driveStr || transStr;
   if (!hasSpecs) {
-    facts.push({ key: 'Specs', val: 'Not available for this vehicle' });
+    facts.push({ key: 'Specs', val: 'Loading…' });
   }
 
   els.quickFactsBody.innerHTML = facts.map(f => `
