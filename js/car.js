@@ -91,7 +91,7 @@ function switchTab(tab) {
 (async function init() {
   // Run fetches in parallel
   const [wiki, ratings, recalls] = await Promise.allSettled([
-    API.getWikiInfo(make, model),
+    API.getWikiInfo(make, model, year),
     API.getSafetyRatings(year, make, model),
     API.getRecalls(make, model, year),
   ]);

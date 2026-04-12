@@ -183,29 +183,70 @@ const API = {
     }
   },
 
-  /** Wikipedia page summary + image. */
-  async getWikiInfo(make, model) {
-    const queries = [
+  /** Wikipedia page summary + image, year-aware. */
+  async getWikiInfo(make, model, year) {
+    const yr = parseInt(year) || new Date().getFullYear();
+
+    // Helper: fetch a Wikipedia REST summary and return structured data if it has an image
+    async function tryPage(slug, requireImage = true) {
+      const key = `wiki_${slug.toLowerCase()}`;
+      try {
+        const data = await _fetch(`${WIKI_REST}/${encodeURIComponent(slug)}`, key, 86400000);
+        if (data.type !== 'standard') return null;
+        if (requireImage && !data.thumbnail && !data.originalimage) return null;
+        return {
+          title:   data.title,
+          summary: data.extract,
+          image:   data.thumbnail?.source || null,
+          imageHQ: data.originalimage?.source || null,
+          url:     data.content_urls?.desktop?.page || null,
+        };
+      } catch { return null; }
+    }
+
+    // 1. Year-specific direct page attempts
+    const yearQueries = [
+      `${yr}_${make}_${model}`,
+      `${make}_${model}_(${yr})`,
+    ].map(q => q.replace(/\s+/g, '_'));
+
+    for (const q of yearQueries) {
+      const result = await tryPage(q);
+      if (result) return result;
+    }
+
+    // 2. Wikipedia search with year — finds generation-specific articles
+    try {
+      const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search` +
+        `&srsearch=${encodeURIComponent(yr + ' ' + make + ' ' + model)}` +
+        `&format=json&origin=*&srlimit=4`;
+      const key = `wikisearch_${yr}_${make}_${model}`.toLowerCase().replace(/\s+/g, '_');
+      const searchData = await _fetch(searchUrl, key, 86400000);
+      for (const hit of (searchData.query?.search || [])) {
+        const slug = hit.title.replace(/\s+/g, '_');
+        const result = await tryPage(slug);
+        if (result) return result;
+      }
+    } catch { /* continue */ }
+
+    // 3. Generic make+model fallbacks (with image required)
+    const genericQueries = [
       `${make}_${model}`,
       `${make}_${model}_(automobile)`,
       `${model}_(automobile)`,
     ].map(q => q.replace(/\s+/g, '_'));
 
-    for (const q of queries) {
-      const key = `wiki_${q.toLowerCase()}`;
-      try {
-        const data = await _fetch(`${WIKI_REST}/${encodeURIComponent(q)}`, key, 86400000);
-        if (data.type === 'standard') {
-          return {
-            title:    data.title,
-            summary:  data.extract,
-            image:    data.thumbnail?.source || null,
-            imageHQ:  data.originalimage?.source || null,
-            url:      data.content_urls?.desktop?.page || null,
-          };
-        }
-      } catch { continue; }
+    for (const q of genericQueries) {
+      const result = await tryPage(q);
+      if (result) return result;
     }
+
+    // 4. Final fallback — accept pages without images (for description text)
+    for (const q of genericQueries) {
+      const result = await tryPage(q, false);
+      if (result) return result;
+    }
+
     return null;
   },
 
