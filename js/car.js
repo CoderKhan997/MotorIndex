@@ -263,6 +263,97 @@ function renderRecallBanner(recalls) {
   ).join('');
 }
 
+// ── Quick Facts helpers ─────────────────────────────────────────
+
+/**
+ * Split a string by top-level commas (ignores commas inside parentheses).
+ * e.g. "A (1, 2), B" → ["A (1, 2)", "B"]
+ */
+function _splitTopLevel(str) {
+  const items = [];
+  let depth = 0, cur = '';
+  for (const ch of str) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) { items.push(cur.trim()); cur = ''; }
+    else cur += ch;
+  }
+  if (cur.trim()) items.push(cur.trim());
+  return items.filter(Boolean);
+}
+
+/**
+ * Given a Wikipedia infobox value that may list options across multiple years,
+ * return only the entries that apply to `yr`.
+ *
+ * Patterns recognised: (2013–2022), (2016-present), (2024)
+ * If nothing matches `yr` exactly, returns the last item (most recent gen).
+ * Year-range annotations are stripped from the returned text.
+ */
+function _filterByYear(value, yr) {
+  if (!value) return null;
+  const yrNum = parseInt(yr);
+  const items = _splitTopLevel(value);
+  if (items.length <= 1) {
+    // Single value — just strip any year annotation and return
+    return value.replace(/\s*\(\d{4}[–\-](?:\d{4}|present)\)/gi, '').trim();
+  }
+
+  const YR_RANGE = /\((\d{4})[–\-](\d{4}|present)\)/i;
+  const YR_SOLO  = /\((\d{4})\)/;
+
+  const applicable = items.filter(item => {
+    const rangeM = item.match(YR_RANGE);
+    if (rangeM) {
+      const start = parseInt(rangeM[1]);
+      const end   = rangeM[2].toLowerCase() === 'present' ? 9999 : parseInt(rangeM[2]);
+      return yrNum >= start && yrNum <= end;
+    }
+    const soloM = item.match(YR_SOLO);
+    if (soloM) return parseInt(soloM[1]) === yrNum;
+    return true; // no year tag → always applicable
+  });
+
+  // Use exact matches; fall back to last item if none match
+  const pool = applicable.length > 0 ? applicable : [items[items.length - 1]];
+
+  return pool
+    .map(s => s
+      .replace(YR_RANGE, '')
+      .replace(YR_SOLO, '')
+      // Also remove engine-size parentheticals added by Wikipedia like "(2.4 L)"
+      .replace(/\s*\([^)]{0,20}\)\s*/g, ' ')
+      .trim())
+    .filter(Boolean)
+    // Deduplicate (same engine listed under two year bands)
+    .filter((v, i, a) => a.indexOf(v) === i)
+    .join(', ')
+    || items[items.length - 1];
+}
+
+/**
+ * Remove verbose Wikipedia internal identifiers from spec text.
+ * e.g. "Honda K engine K24Z7 I4" → "2.4L I4"
+ *      "ZF 8HP70 8-speed automatic" → "8-speed automatic"
+ */
+function _tidySpec(value) {
+  if (!value) return null;
+  return value
+    // Remove "Make Model engine" jargon  e.g. "Honda K engine"
+    .replace(/\b\w+ \w+ engine\b/gi, '')
+    // Remove bare engine codes like K24Z7, LEA-MF6, R20A
+    .replace(/\b[A-Z]{1,3}\d{2}[A-Z0-9\-]*\b/g, '')
+    // Remove ZF part numbers e.g. "ZF 8HP70"
+    .replace(/\bZF\s+\w+\b/gi, '')
+    // Normalise L (litre) — "2.4 L" → "2.4L"
+    .replace(/(\d)\s+L\b/g, '$1L')
+    // Remove repeated commas / spaces left by the above
+    .replace(/,\s*,/g, ',')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s,]+|[\s,]+$/g, '')
+    .trim();
+}
+
 // ── Quick Facts ────────────────────────────────────────────────
 // wikiSpecs  — parsed {{Infobox automobile}} fields (primary, covers all brands)
 // canSpecs   — NHTSA Canadian specs array (fallback, US/Canada vehicles only)
@@ -287,7 +378,7 @@ function renderQuickFacts(wiki, ratings, wikiSpecs, canSpecs) {
 
   // ── Engine ──────────────────────────────────────────────────
   // Infobox fields tried in order of specificity
-  let engineStr = wi('engine', 'engine_type', 'engines', 'powertrain');
+  let engineStr = _tidySpec(_filterByYear(wi('engine', 'engine_type', 'engines', 'powertrain'), year));
 
   // Fallback: build from NHTSA Canadian specs
   if (!engineStr) {
@@ -301,7 +392,7 @@ function renderQuickFacts(wiki, ratings, wikiSpecs, canSpecs) {
   }
 
   // ── Horsepower ──────────────────────────────────────────────
-  let hpStr = wi('horsepower', 'power', 'max_power');
+  let hpStr = _filterByYear(wi('horsepower', 'power', 'max_power'), year);
   if (hpStr && !/hp|kw|ps\b/i.test(hpStr)) hpStr = `${hpStr} hp`;
 
   // Fallback: regex scan of Wikipedia summary text
@@ -312,8 +403,8 @@ function renderQuickFacts(wiki, ratings, wikiSpecs, canSpecs) {
 
   // ── Torque ──────────────────────────────────────────────────
   let torqueStr = null;
-  const torqueLbFt = wi('torqueft-lbf', 'torqueft_lbf', 'torque_ft_lbf', 'torque_lbft');
-  const torqueNm   = wi('torquenm', 'torque_nm', 'torque');
+  const torqueLbFt = _filterByYear(wi('torqueft-lbf', 'torqueft_lbf', 'torque_ft_lbf', 'torque_lbft'), year);
+  const torqueNm   = _filterByYear(wi('torquenm', 'torque_nm', 'torque'), year);
   if (torqueLbFt) {
     torqueStr = /lb|ft/i.test(torqueLbFt) ? torqueLbFt : `${torqueLbFt} lb-ft`;
   } else if (torqueNm) {
@@ -327,11 +418,11 @@ function renderQuickFacts(wiki, ratings, wikiSpecs, canSpecs) {
   }
 
   // ── Drivetrain ──────────────────────────────────────────────
-  let driveStr = wi('drive_wheel', 'drive_type', 'drivetrain', 'drive');
+  let driveStr = _filterByYear(wi('drive_wheel', 'drive_type', 'drivetrain', 'drive'), year);
   if (!driveStr) driveStr = ca('drive type') || ca('drive');
 
   // ── Transmission ────────────────────────────────────────────
-  let transStr = wi('transmission', 'gearbox', 'trans');
+  let transStr = _tidySpec(_filterByYear(wi('transmission', 'gearbox', 'trans'), year));
   if (!transStr) {
     const style  = ca('transmission style') || ca('transmission type');
     const speeds = ca('transmission speeds') || ca('speeds');
@@ -341,7 +432,7 @@ function renderQuickFacts(wiki, ratings, wikiSpecs, canSpecs) {
   }
 
   // ── Fuel type ───────────────────────────────────────────────
-  const fuelStr = wi('fuel_type', 'fuel') || ca('fuel type - primary') || ca('fuel type');
+  const fuelStr = _filterByYear(wi('fuel_type', 'fuel'), year) || ca('fuel type - primary') || ca('fuel type');
 
   // ── Assemble ─────────────────────────────────────────────────
   const facts = [

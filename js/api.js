@@ -79,12 +79,22 @@ function _cleanWikiVal(raw) {
       (_, c) => c.split('|').map(s => s.replace(/\n/g, ' ').trim()).filter(Boolean).join(', '))
     // {{convert|num|unit|…}}  →  "num unit"
     .replace(/\{\{(?:convert|cvt)\|(\d[\d.,–-]*)\|([^|}\s,]+)[^}]*\}\}/gi, '$1 $2')
-    // [[Target|Display]]  or  [[Target]]
-    .replace(/\[\[(?:[^\]|]+\|)?([^\]]+)\]\]/g, '$1')
+    // [[Target|Display]]  →  "Display"
+    // [[Target#Anchor|Display]]  →  "Display"
+    // [[Target#Anchor]]  →  "Target"  (strip the #anchor)
+    // [[Target]]  →  "Target"
+    .replace(/\[\[(?:[^\]|]+\|)?([^\]#|]+)(?:#[^\]|]*)?\]\]/g, '$1')
     // Remove any remaining templates
     .replace(/\{\{[^}]*\}\}/g, '')
     // Strip HTML tags
     .replace(/<[^>]+>/g, ' ')
+    // Decode common HTML entities (wikitext uses &nbsp; etc. literally)
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#160;/g, ' ')
     // Wiki bold/italic markup
     .replace(/'{2,3}/g, '')
     // Normalise spaces and punctuation
