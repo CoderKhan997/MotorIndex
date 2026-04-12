@@ -129,21 +129,39 @@ function renderOverview(wiki, ratings) {
       <p>Detailed description data is not available for this vehicle. Visit the manufacturer's website or Wikipedia for more information.</p>`;
   }
 
-  // Car image
+  // Car image — fade in smoothly, fallback chain: imageHQ → image → placeholder
   if (wiki?.image) {
-    els.carImage.src = wiki.imageHQ || wiki.image;
-    els.carImage.alt = `${year} ${make} ${model}`;
-    els.carImage.classList.remove('hidden');
-    els.carImagePlaceholder.style.display = 'none';
-    els.carImage.addEventListener('error', () => {
-      // Fallback to thumbnail
-      if (wiki.image && els.carImage.src !== wiki.image) {
-        els.carImage.src = wiki.image;
-      } else {
-        els.carImage.classList.add('hidden');
+    const imgEl = els.carImage;
+    const urls  = [wiki.imageHQ, wiki.image].filter(Boolean);
+    let   attempt = 0;
+
+    function tryLoad() {
+      if (attempt >= urls.length) {
+        imgEl.classList.add('hidden');
         els.carImagePlaceholder.style.display = '';
+        return;
       }
-    });
+      imgEl.style.opacity = '0';
+      imgEl.src = urls[attempt];
+      imgEl.alt = `${year} ${make} ${model}`;
+    }
+
+    imgEl.addEventListener('load', () => {
+      imgEl.classList.remove('hidden');
+      els.carImagePlaceholder.style.display = 'none';
+      // Smooth fade-in
+      requestAnimationFrame(() => {
+        imgEl.style.transition = 'opacity 0.5s ease';
+        imgEl.style.opacity = '1';
+      });
+    }, { once: false });
+
+    imgEl.addEventListener('error', () => {
+      attempt++;
+      tryLoad();
+    }, { once: false });
+
+    tryLoad();
   }
 
   // Safety ratings

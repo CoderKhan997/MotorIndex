@@ -1242,6 +1242,7 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
   display: block;
   border-radius: 0;
   border: none;
+  opacity: 0;
 }
 
 .car-image.hidden { display: none; }
