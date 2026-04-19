@@ -235,14 +235,62 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 /* ── Floating Search ──────────────────────────────────────── */
 .float-search {
   position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  /* centre via transform so we can animate to a left-side position */
+  transform: translateX(calc(50vw - 50%));
   width: 100%;
   max-width: 580px;
   padding: 0 24px;
   z-index: 50;
   top: 42vh; /* overridden by JS on scroll */
+  /* Transition applied by JS only during state changes (avoids scroll lag) */
 }
+
+/* ── Minimized state (slides to left when tree is in view) ── */
+.float-search.search-minimized {
+  transform: translateX(16px);
+  max-width: 232px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 2px solid var(--border-2);
+  border-radius: 8px;
+  box-shadow: 0 4px 28px var(--shadow-lg);
+}
+
+.float-search.search-minimized .mode-toggle {
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+/* Hide search box and arrow in minimized state */
+.float-search.search-minimized .search-box  { display: none; }
+.float-search.search-minimized .float-arrow { display: none !important; }
+
+/* Mini search-open button — only shown in minimized state */
+.search-mini-open {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 9px 0;
+  background: var(--bg-2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  font-family: 'Roboto', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.search-mini-open:hover {
+  background: var(--bg-3);
+  border-color: var(--border-2);
+  color: var(--text);
+}
+.float-search.search-minimized .search-mini-open { display: flex; }
 
 .float-arrow {
   display: flex;
@@ -1958,6 +2006,78 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
   border-color: var(--accent);
   color: #fff;
 }
+
+/* ── Tree section labels (Popular Brands / All Brands) ────── */
+.tree-section-label {
+  padding: 8px 16px;
+  font-family: 'Roboto', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--text-3);
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  transition: background var(--transition);
+}
+
+/* ── Show More ────────────────────────────────────────────── */
+.tree-show-more-wrap {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  transition: background var(--transition);
+}
+
+.tree-show-more-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  font-family: 'Roboto', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.tree-show-more-btn:hover {
+  background: var(--bg-3);
+  border-color: var(--border-2);
+  color: var(--text);
+}
+
+.show-more-count {
+  padding: 2px 7px;
+  background: var(--bg-3);
+  border-radius: 100px;
+  font-size: 10px;
+  color: var(--text-3);
+  transition: background var(--transition);
+}
+
+.show-more-arrow {
+  margin-left: auto;
+  color: var(--text-3);
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+}
+.tree-show-more-btn[aria-expanded="true"] .show-more-arrow {
+  transform: rotate(180deg);
+}
+
+/* ── Extended makes list (collapsed by default) ───────────── */
+.tree-extended {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.tree-extended.open { grid-template-rows: 1fr; }
+.tree-extended-inner { overflow: hidden; min-height: 0; }
 
 /* ── Make level ───────────────────────────────────────────── */
 .tree-make { border-bottom: 1px solid var(--border); }

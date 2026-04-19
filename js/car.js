@@ -354,6 +354,31 @@ function _tidySpec(value) {
     .trim();
 }
 
+/**
+ * Parse a Wikipedia production field like "2015–present", "2015–2022",
+ * "January 2015 – December 2022", "2015" into a clean display string.
+ * Returns null if nothing useful can be extracted.
+ */
+function _parseProduction(raw) {
+  if (!raw) return null;
+  // Normalise dash variants
+  const s = raw.replace(/[–—]/g, '-').replace(/\s+/g, ' ').trim();
+
+  // Try "YYYY-present" or "YYYY-YYYY" patterns
+  const rangeM = s.match(/(\d{4})\s*[-–]\s*(present|\d{4})/i);
+  if (rangeM) {
+    const start = rangeM[1];
+    const end   = rangeM[2].toLowerCase() === 'present' ? 'Present' : rangeM[2];
+    return `${start} – ${end}`;
+  }
+
+  // Try lone year
+  const singleM = s.match(/\b(\d{4})\b/);
+  if (singleM) return singleM[1];
+
+  return null;
+}
+
 // ── Quick Facts ────────────────────────────────────────────────
 // wikiSpecs  — parsed {{Infobox automobile}} fields (primary, covers all brands)
 // canSpecs   — NHTSA Canadian specs array (fallback, US/Canada vehicles only)
@@ -434,6 +459,23 @@ function renderQuickFacts(wiki, ratings, wikiSpecs, canSpecs) {
   // ── Fuel type ───────────────────────────────────────────────
   const fuelStr = _filterByYear(wi('fuel_type', 'fuel'), year) || ca('fuel type - primary') || ca('fuel type');
 
+  // ── Seats ────────────────────────────────────────────────────
+  const seatsRaw = wi('seats', 'capacity', 'seating_capacity', 'passengers', 'seating');
+  let seatsStr = null;
+  if (seatsRaw) {
+    // Strip trailing non-numeric suffixes e.g. "5 passengers" → "5"
+    const m = seatsRaw.match(/(\d[\d–\-]*)/);
+    seatsStr = m ? m[1].replace(/\s/g, '') + ' seats' : seatsRaw;
+  }
+  if (!seatsStr) {
+    const nhtsaSeats = ca('seating capacity') || ca('seating') || ca('passengers');
+    if (nhtsaSeats) seatsStr = nhtsaSeats + ' seats';
+  }
+
+  // ── Production years ─────────────────────────────────────────
+  const productionRaw = wi('production', 'years', 'production_run', 'model_years');
+  const productionStr = _parseProduction(productionRaw);
+
   // ── Assemble ─────────────────────────────────────────────────
   const facts = [
     { key: 'Make',  val: make  },
@@ -441,12 +483,14 @@ function renderQuickFacts(wiki, ratings, wikiSpecs, canSpecs) {
     { key: 'Year',  val: year  },
   ];
 
-  if (engineStr) facts.push({ key: 'Engine',       val: engineStr });
-  if (hpStr)     facts.push({ key: 'Horsepower',   val: hpStr });
-  if (torqueStr) facts.push({ key: 'Torque',        val: torqueStr });
-  if (driveStr)  facts.push({ key: 'Drivetrain',    val: driveStr });
-  if (transStr)  facts.push({ key: 'Transmission',  val: transStr });
-  if (fuelStr)   facts.push({ key: 'Fuel',          val: fuelStr });
+  if (productionStr) facts.push({ key: 'Production',    val: productionStr });
+  if (engineStr)     facts.push({ key: 'Engine',        val: engineStr });
+  if (hpStr)         facts.push({ key: 'Horsepower',    val: hpStr });
+  if (torqueStr)     facts.push({ key: 'Torque',        val: torqueStr });
+  if (driveStr)      facts.push({ key: 'Drivetrain',    val: driveStr });
+  if (transStr)      facts.push({ key: 'Transmission',  val: transStr });
+  if (fuelStr)       facts.push({ key: 'Fuel',          val: fuelStr });
+  if (seatsStr)      facts.push({ key: 'Seating',       val: seatsStr });
 
   if (ratings?.detail?.VehicleDescription) {
     facts.push({ key: 'Variant', val: ratings.detail.VehicleDescription });

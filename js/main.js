@@ -9,6 +9,12 @@ const YEAR_END   = 1995;
 const ALL_YEARS  = [];
 for (let y = YEAR_START; y >= YEAR_END; y--) ALL_YEARS.push(y);
 
+// ── Top 10 popular brands (NA + Europe combined, ranked by volume) ──
+const POPULAR_MAKES_ORDERED = [
+  'Toyota', 'Ford', 'Volkswagen', 'Honda', 'Hyundai',
+  'Chevrolet', 'BMW', 'Kia', 'Mercedes-Benz', 'Nissan',
+];
+
 // ── Curated makes — cars (VEHICLE_DB entries with at least one non-moto model)
 const CURATED_MAKES = (window.VEHICLE_DB || [])
   .filter(entry => entry.models.some(m => !m.types.every(t => t === 'motorcycle')))
@@ -24,9 +30,10 @@ const MOTO_MAKES = (window.VEHICLE_DB || [])
   .sort((a, b) => a.name.localeCompare(b.name));
 
 // ── DOM refs ───────────────────────────────────────────────────
-const treeRoot    = document.getElementById('treeRoot');
-const treeSearch  = document.getElementById('treeSearch');
-const floatSearch = document.getElementById('floatSearch');
+const treeRoot       = document.getElementById('treeRoot');
+const treeSearch     = document.getElementById('treeSearch');
+const floatSearch    = document.getElementById('floatSearch');
+const searchMiniOpen = document.getElementById('searchMiniOpen');
 const modeCarBtn  = document.getElementById('modeCarBtn');
 const modeMotoBtn = document.getElementById('modeMotoBtn');
 const modePill    = document.getElementById('modePill');
@@ -88,6 +95,13 @@ function switchMode(mode) {
 if (modeCarBtn)  modeCarBtn.addEventListener('click',  () => switchMode('car'));
 if (modeMotoBtn) modeMotoBtn.addEventListener('click', () => switchMode('motorcycle'));
 
+// Mini search button: scroll back to top to expand the bar
+if (searchMiniOpen) {
+  searchMiniOpen.addEventListener('click', () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+}
+
 // ── Init — position pill after layout settles ──────────────────
 requestAnimationFrame(() => requestAnimationFrame(initPill));
 
@@ -113,42 +127,92 @@ const FLOAT_TOP_RATIO  = 0.44;  // target: 44% of viewport height
 const FLOAT_GAP        = 36;    // px gap above the browse section when docked
 const FLOAT_MIN_TOP    = 76;    // never go above the header (60px + 16px buffer)
 const CONTENT_GAP      = 48;    // min px below hero title/subtitle
+const MINIMIZE_HYSTERESIS = 40; // extra px the user must scroll back before expanding
+
+const MINIMIZE_TRANSITION = [
+  'transform 0.45s cubic-bezier(0.4,0,0.2,1)',
+  'max-width 0.45s cubic-bezier(0.4,0,0.2,1)',
+  'padding 0.35s ease',
+  'top 0.45s cubic-bezier(0.4,0,0.2,1)',
+  'background 0.35s ease',
+  'border-color 0.35s ease',
+  'box-shadow 0.35s ease',
+].join(', ');
 
 const floatArrow    = floatSearch ? floatSearch.querySelector('.float-arrow') : null;
 const heroInner     = document.querySelector('.hero-inner');
 const browseSection = document.querySelector('.browse-section');
 
+let _isSearchMinimized  = false;
+let _stateTransitionTimer = null;
+
 function positionFloatSearch() {
   if (!floatSearch || !browseSection) return;
 
-  const searchH      = floatSearch.offsetHeight;
-  const browseRect   = browseSection.getBoundingClientRect();
-  const targetTop    = window.innerHeight * FLOAT_TOP_RATIO;
+  const searchH    = floatSearch.offsetHeight;
+  const browseRect = browseSection.getBoundingClientRect();
+  const targetTop  = window.innerHeight * FLOAT_TOP_RATIO;
+  const maxTop     = browseRect.top - searchH - FLOAT_GAP;
 
-  // Stop the search bar before the browse section (includes title + padding)
-  const maxTop       = browseRect.top - searchH - FLOAT_GAP;
+  // Hysteresis: once minimised, user must scroll back a bit more before expanding
+  const shouldMinimize = _isSearchMinimized
+    ? targetTop >= maxTop - MINIMIZE_HYSTERESIS
+    : targetTop >= maxTop;
 
-  // Whether we've reached the docking point
-  const isDocked     = targetTop >= maxTop;
+  if (shouldMinimize && !_isSearchMinimized) {
+    // ── Transition TO minimised ──
+    _isSearchMinimized = true;
+    clearTimeout(_stateTransitionTimer);
 
-  let top = isDocked ? maxTop : targetTop;
+    floatSearch.style.transition = MINIMIZE_TRANSITION;
+    // Force a layout flush so the browser knows the "from" state
+    floatSearch.getBoundingClientRect();
+    // Change values — browser animates from current → new
+    floatSearch.style.top = '76px';
+    floatSearch.classList.add('search-minimized');
 
-  // Never overlap the hero title / subtitle — enforce min distance below content
-  if (heroInner) {
-    const heroBottom     = heroInner.getBoundingClientRect().bottom;
-    const minFromContent = heroBottom + CONTENT_GAP;
-    if (top < minFromContent) top = minFromContent;
+    // Clear inline transition once animation is done (keep scroll tracking clean)
+    _stateTransitionTimer = setTimeout(() => {
+      if (_isSearchMinimized) floatSearch.style.transition = '';
+    }, 500);
+
+  } else if (!shouldMinimize && _isSearchMinimized) {
+    // ── Transition OUT of minimised ──
+    _isSearchMinimized = false;
+    clearTimeout(_stateTransitionTimer);
+
+    floatSearch.style.transition = MINIMIZE_TRANSITION;
+    floatSearch.getBoundingClientRect();
+    floatSearch.classList.remove('search-minimized');
+    // Return to the docking threshold (avoids big vertical jump)
+    floatSearch.style.top = maxTop + 'px';
+
+    _stateTransitionTimer = setTimeout(() => {
+      if (!_isSearchMinimized) floatSearch.style.transition = '';
+    }, 500);
+
+  } else if (!shouldMinimize && !_isSearchMinimized) {
+    // ── Normal scroll tracking (no transition) ──
+    floatSearch.style.transition = '';
+
+    let top = targetTop;
+    if (top > maxTop) top = maxTop;
+
+    if (heroInner) {
+      const heroBottom = heroInner.getBoundingClientRect().bottom;
+      const minFromContent = heroBottom + CONTENT_GAP;
+      if (top < minFromContent) top = minFromContent;
+    }
+    if (top < FLOAT_MIN_TOP) top = FLOAT_MIN_TOP;
+
+    floatSearch.style.top = top + 'px';
   }
 
-  // Hard floor: never go above the header
-  if (top < FLOAT_MIN_TOP) top = FLOAT_MIN_TOP;
-
-  floatSearch.style.top = top + 'px';
-
-  // Fade the arrow out when docked above the tree section
+  // Arrow visibility
   if (floatArrow) {
-    floatArrow.style.opacity      = isDocked ? '0' : '1';
-    floatArrow.style.pointerEvents = isDocked ? 'none' : '';
+    const hide = shouldMinimize || _isSearchMinimized;
+    floatArrow.style.opacity      = hide ? '0' : '';
+    floatArrow.style.pointerEvents = hide ? 'none' : '';
   }
 }
 
@@ -162,9 +226,68 @@ function renderTree(makes) {
     treeRoot.innerHTML = '<div class="tree-empty">No makes matched your search</div>';
     return;
   }
+
+  // Full unfiltered list → show popular brands first + "Show More"
+  const isFullList = makes === CURATED_SORTED;
+  if (isFullList) {
+    renderPopularTree(makes);
+    return;
+  }
+
+  // Filtered (search) → flat list
   const frag = document.createDocumentFragment();
   makes.forEach(make => frag.appendChild(buildMakeRow(make)));
   treeRoot.appendChild(frag);
+}
+
+function renderPopularTree(allMakes) {
+  // Popular brands in popularity order
+  const popularEntries = POPULAR_MAKES_ORDERED
+    .map(name => allMakes.find(m => m.name === name))
+    .filter(Boolean);
+
+  // All remaining brands A–Z (excluding the popular 10)
+  const popularSet  = new Set(POPULAR_MAKES_ORDERED);
+  const restEntries = allMakes.filter(m => !popularSet.has(m.name));
+
+  // ── Popular section ──
+  const popularLabel = mkEl('div', 'tree-section-label');
+  popularLabel.textContent = 'POPULAR BRANDS';
+  treeRoot.appendChild(popularLabel);
+
+  popularEntries.forEach(make => treeRoot.appendChild(buildMakeRow(make)));
+
+  // ── Show More button ──
+  const showMoreWrap = mkEl('div', 'tree-show-more-wrap');
+  const showMoreBtn  = mkEl('button', 'tree-show-more-btn');
+  showMoreBtn.setAttribute('aria-expanded', 'false');
+  showMoreBtn.innerHTML = `
+    <span class="show-more-label">Show all brands</span>
+    <span class="show-more-count">${restEntries.length} more</span>
+    <svg class="show-more-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true">
+      <polyline points="6 9 12 15 18 9"/>
+    </svg>`;
+  showMoreWrap.appendChild(showMoreBtn);
+  treeRoot.appendChild(showMoreWrap);
+
+  // ── Extended list (collapsed by default) ──
+  const restOuter = mkEl('div', 'tree-extended');
+  const restInner = mkEl('div', 'tree-extended-inner');
+
+  const restLabel = mkEl('div', 'tree-section-label');
+  restLabel.textContent = 'ALL BRANDS — A TO Z';
+  restInner.appendChild(restLabel);
+  restEntries.forEach(make => restInner.appendChild(buildMakeRow(make)));
+
+  restOuter.appendChild(restInner);
+  treeRoot.appendChild(restOuter);
+
+  showMoreBtn.addEventListener('click', () => {
+    const expanded = restOuter.classList.toggle('open');
+    showMoreBtn.setAttribute('aria-expanded', String(expanded));
+    showMoreBtn.querySelector('.show-more-label').textContent =
+      expanded ? 'Show fewer brands' : 'Show all brands';
+  });
 }
 
 // ── Render motorcycle tree (local DB: make → model, no year level) ─
