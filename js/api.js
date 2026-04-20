@@ -104,30 +104,11 @@ function _cleanWikiVal(raw) {
 }
 
 /**
- * Parse the {{Infobox automobile}} block out of raw wikitext.
- * Returns an object keyed by normalised field names.
+ * Parse a single infobox block's fields into a plain object.
+ * Keys are normalised (lowercase, spaces/hyphens → underscores).
  */
-function _parseWikitextInfobox(wikitext) {
+function _parseInfoboxBlock(block) {
   const specs = {};
-
-  // Find infobox start (handles Infobox automobile / Infobox automotive / etc.)
-  const ibMatch = wikitext.match(/\{\{\s*[Ii]nfobox\s+auto(?:mobile|motive|)?\s*[\n|]/);
-  if (!ibMatch) return specs;
-
-  // Walk to the balanced closing }} so we don't spill into later templates
-  let depth = 0;
-  let end = ibMatch.index;
-  for (let i = ibMatch.index; i < wikitext.length - 1; i++) {
-    if (wikitext[i] === '{' && wikitext[i + 1] === '{') { depth++; i++; }
-    else if (wikitext[i] === '}' && wikitext[i + 1] === '}') {
-      depth--; i++;
-      if (depth <= 0) { end = i + 1; break; }
-    }
-  }
-
-  const block = wikitext.slice(ibMatch.index, end);
-
-  // Parse line-by-line, accumulating multi-line values
   let key = null;
   let valLines = [];
 
@@ -141,7 +122,6 @@ function _parseWikitextInfobox(wikitext) {
     const m = line.match(/^\s*\|\s*([^=|{}<>\n]+?)\s*=\s*(.*)$/);
     if (m) {
       flush();
-      // Normalise key: lowercase, spaces/hyphens → underscores
       key = m[1].trim().toLowerCase().replace(/[\s\-]+/g, '_');
       valLines = [m[2].trim()];
     } else if (key) {
@@ -149,19 +129,80 @@ function _parseWikitextInfobox(wikitext) {
     }
   }
   flush();
-
   return specs;
 }
 
 /**
+ * Parse ALL {{Infobox automobile*}} blocks out of raw wikitext.
+ * For multi-generation articles, finds the block whose production range
+ * covers targetYear, falling back to merging all blocks.
+ * Returns an object keyed by normalised field names.
+ */
+function _parseWikitextInfobox(wikitext, targetYear) {
+  // Match ALL automobile-type infoboxes:
+  //   {{Infobox automobile}}
+  //   {{Infobox automobile generation}}
+  //   {{Infobox automotive}}
+  //   {{Infobox auto}}
+  //   {{Infobox car}}
+  const ibRegex = /\{\{\s*(?:[Ii]nfobox\s+auto[a-z]*(?:\s+[a-z]+)?|[Ii]nfobox\s+car)\s*[\n|]/g;
+
+  // Collect all start positions
+  const starts = [];
+  let ibMatch;
+  while ((ibMatch = ibRegex.exec(wikitext)) !== null) {
+    starts.push(ibMatch.index);
+  }
+  if (starts.length === 0) return {};
+
+  // Extract balanced {{ … }} block beginning at each start position
+  function extractBlock(startIdx) {
+    let depth = 0, end = startIdx;
+    for (let i = startIdx; i < wikitext.length - 1; i++) {
+      if (wikitext[i] === '{' && wikitext[i + 1] === '{')       { depth++; i++; }
+      else if (wikitext[i] === '}' && wikitext[i + 1] === '}') {
+        depth--; i++;
+        if (depth <= 0) { end = i + 1; break; }
+      }
+    }
+    return wikitext.slice(startIdx, end);
+  }
+
+  const parsedBlocks = starts.map(s => _parseInfoboxBlock(extractBlock(s)));
+
+  if (parsedBlocks.length === 1) return parsedBlocks[0];
+
+  // Try to find the generation block matching targetYear
+  if (targetYear) {
+    const yrNum = parseInt(targetYear);
+    for (let i = 0; i < parsedBlocks.length; i++) {
+      const prod = parsedBlocks[i].production || parsedBlocks[i].model_years || '';
+      const rangeM = prod.match(/(\d{4})\s*[–\-]\s*(present|\d{4})/i);
+      if (rangeM) {
+        const start = parseInt(rangeM[1]);
+        const end   = rangeM[2].toLowerCase() === 'present' ? 9999 : parseInt(rangeM[2]);
+        if (yrNum >= start && yrNum <= end) {
+          // Generation block wins; first block fills in any missing fields
+          return { ...parsedBlocks[0], ...parsedBlocks[i] };
+        }
+      }
+    }
+  }
+
+  // Fall back: merge all blocks (later blocks override earlier ones)
+  return parsedBlocks.reduce((acc, b) => ({ ...acc, ...b }), {});
+}
+
+/**
  * Fetch and parse the Wikipedia infobox for a known page title.
+ * targetYear is used to select the right generation block for multi-gen articles.
  * Caches the small parsed-spec object, NOT the raw wikitext.
  */
-async function _getWikiSpecs(wikiTitle) {
+async function _getWikiSpecs(wikiTitle, targetYear) {
   if (!wikiTitle) return {};
 
   const slug     = wikiTitle.replace(/\s+/g, '_');
-  const cacheKey = `wiki_specs_${slug.toLowerCase()}`;
+  const cacheKey = `wiki_specs_${slug.toLowerCase()}${targetYear ? '_' + targetYear : ''}`;
 
   // Check caches first
   if (_cache.has(cacheKey)) return _cache.get(cacheKey);
@@ -186,7 +227,7 @@ async function _getWikiSpecs(wikiTitle) {
                   || page?.revisions?.[0]?.['*']
                   || '';
 
-    const specs = _parseWikitextInfobox(wikitext);
+    const specs = _parseWikitextInfobox(wikitext, targetYear);
 
     // Cache only the small parsed result
     _cache.set(cacheKey, specs);
@@ -502,11 +543,12 @@ const API = {
 
   /**
    * Parse vehicle specs from the Wikipedia infobox for a known article title.
+   * targetYear selects the correct generation block for multi-gen articles.
    * Returns an object with normalised field names from {{Infobox automobile}}.
    * The caller is responsible for mapping fields to display labels.
    */
-  async getVehicleSpecs(wikiTitle) {
-    return _getWikiSpecs(wikiTitle);
+  async getVehicleSpecs(wikiTitle, targetYear) {
+    return _getWikiSpecs(wikiTitle, targetYear);
   },
 
   /** Canadian vehicle specs from NHTSA (supplemental). */

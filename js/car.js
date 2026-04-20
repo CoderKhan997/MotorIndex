@@ -108,8 +108,10 @@ function switchTab(tab) {
 
   // Phase 2 — enrich Quick Facts with infobox specs + NHTSA Canadian specs
   // Both run in parallel; they don't block Phase 1 rendering above.
+  // Always attempt Wikipedia specs — use wikiVal.title if available, else
+  // construct a title directly from make+model so the fetch is never skipped.
   const [wikiSpecs, canSpecs] = await Promise.allSettled([
-    wikiVal?.title ? API.getVehicleSpecs(wikiVal.title) : Promise.resolve({}),
+    API.getVehicleSpecs(wikiVal?.title || `${make} ${model}`, year),
     API.getCanadianSpecs(year, make, model),
   ]);
 
