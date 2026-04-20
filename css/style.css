@@ -246,107 +246,82 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
   /* Transition applied by JS only during state changes (avoids scroll lag) */
 }
 
-/* ── Minimized state — vertical icon strip on the far left ── */
+/* ── Minimized state — just fade the bar out ─────────────────── */
+.float-search {
+  transition: opacity 0.4s cubic-bezier(0.4,0,0.2,1);
+}
 .float-search.search-minimized {
-  transform: translateX(12px);
-  max-width: 48px;
-  padding: 8px 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── Vertical icon strip — separate fixed element ────────────── */
+.search-strip {
+  position: fixed;
+  left: 12px;
+  top: 80px;          /* overridden by JS to align with tree section */
+  z-index: 51;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 0;
   background: var(--bg);
   border: 2px solid var(--border-2);
   border-radius: 10px;
-  box-shadow: 0 4px 28px var(--shadow-lg);
-  /* Use flex-column so children stack vertically */
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0;
+  box-shadow: 0 4px 24px var(--shadow-lg);
+  /* Hidden by default; transitions in when minimized */
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-20px);
+  transition:
+    opacity 0.4s cubic-bezier(0.4,0,0.2,1),
+    transform 0.4s cubic-bezier(0.4,0,0.2,1),
+    background var(--transition),
+    border-color var(--transition);
 }
-
-/* Pill indicator meaningless in vertical layout — hide it */
-.float-search.search-minimized .mode-pill { display: none; }
-
-/* Mode toggle becomes a vertical stack */
-.float-search.search-minimized .mode-toggle {
-  flex-direction: column;
-  width: 100%;
-  padding: 4px 6px;
-  margin: 0;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  gap: 2px;
-}
-
-/* Icon-only buttons — hide text with font-size 0 */
-.float-search.search-minimized .mode-btn {
-  font-size: 0;
-  padding: 0;
-  width: 32px;
-  height: 32px;
-  justify-content: center;
-  gap: 0;
-  border-radius: 6px;
-}
-.float-search.search-minimized .mode-btn svg {
-  width: 17px;
-  height: 17px;
-  opacity: 0.38;
-  /* Prevent the scale(1.18) active transform — too large in icon mode */
-  transform: none !important;
-  transition: opacity 0.2s;
-}
-.float-search.search-minimized .mode-btn.active {
-  background: var(--bg-3);
-}
-.float-search.search-minimized .mode-btn.active svg {
+.search-strip.strip-visible {
   opacity: 1;
-  transform: none !important;
+  pointer-events: auto;
+  transform: translateX(0);
 }
 
-/* Divider between mode icons and search icon */
-.float-search.search-minimized::after {
-  content: '';
-  display: block;
-  width: 24px;
-  height: 1px;
-  background: var(--border);
-  margin: 4px auto;
-  flex-shrink: 0;
-}
-
-/* Search icon button — icon only, sits below the divider */
-.search-mini-open {
-  display: none; /* hidden in normal expanded state */
-}
-.float-search.search-minimized .search-mini-open {
+/* ── Strip buttons ───────────────────────────────────────────── */
+.strip-btn {
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0;         /* hides "Search vehicles" text node */
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  margin: 0 auto 2px;
   background: transparent;
   border: none;
   border-radius: 6px;
+  margin: 3px 5px;
   color: var(--text-3);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.18s, color 0.18s;
   flex-shrink: 0;
 }
-.float-search.search-minimized .search-mini-open:hover {
+.strip-btn:hover {
   background: var(--bg-3);
   color: var(--text);
 }
-.float-search.search-minimized .search-mini-open svg {
-  width: 15px;
-  height: 15px;
+.strip-btn.strip-active {
+  color: var(--text);
+  background: var(--bg-3);
+}
+.strip-btn svg {
+  display: block;
+  flex-shrink: 0;
 }
 
-/* Hide search box and arrow in minimized state */
-.float-search.search-minimized .search-box  { display: none; }
-.float-search.search-minimized .float-arrow { display: none !important; }
+/* Thin rule between mode section and search button */
+.strip-sep {
+  width: 22px;
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
+  flex-shrink: 0;
+}
 
 .float-arrow {
   display: flex;

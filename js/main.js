@@ -30,10 +30,13 @@ const MOTO_MAKES = (window.VEHICLE_DB || [])
   .sort((a, b) => a.name.localeCompare(b.name));
 
 // ── DOM refs ───────────────────────────────────────────────────
-const treeRoot       = document.getElementById('treeRoot');
-const treeSearch     = document.getElementById('treeSearch');
-const floatSearch    = document.getElementById('floatSearch');
-const searchMiniOpen = document.getElementById('searchMiniOpen');
+const treeRoot    = document.getElementById('treeRoot');
+const treeSearch  = document.getElementById('treeSearch');
+const floatSearch = document.getElementById('floatSearch');
+const searchStrip = document.getElementById('searchStrip');
+const stripCarBtn    = document.getElementById('stripCarBtn');
+const stripMotoBtn   = document.getElementById('stripMotoBtn');
+const stripSearchBtn = document.getElementById('stripSearchBtn');
 const modeCarBtn  = document.getElementById('modeCarBtn');
 const modeMotoBtn = document.getElementById('modeMotoBtn');
 const modePill    = document.getElementById('modePill');
@@ -50,8 +53,6 @@ function initPill() {
 }
 
 function movePillTo(btn) {
-  // Skip while minimized — pill is hidden and layout is vertical
-  if (_isSearchMinimized) return;
   if (!modePill || !modeToggle || !btn) return;
   // offsetLeft relative to toggle container
   modePill.style.width     = btn.offsetWidth + 'px';
@@ -97,11 +98,15 @@ function switchMode(mode) {
 if (modeCarBtn)  modeCarBtn.addEventListener('click',  () => switchMode('car'));
 if (modeMotoBtn) modeMotoBtn.addEventListener('click', () => switchMode('motorcycle'));
 
-// Mini search button: scroll back to top to expand the bar
-if (searchMiniOpen) {
-  searchMiniOpen.addEventListener('click', () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  });
+// Strip button handlers
+if (stripCarBtn)    stripCarBtn.addEventListener('click',    () => { switchMode('car');          _syncStrip(); });
+if (stripMotoBtn)   stripMotoBtn.addEventListener('click',   () => { switchMode('motorcycle');   _syncStrip(); });
+if (stripSearchBtn) stripSearchBtn.addEventListener('click', () => { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+
+function _syncStrip() {
+  if (!stripCarBtn || !stripMotoBtn) return;
+  stripCarBtn.classList.toggle('strip-active',  TREE_MODE === 'car');
+  stripMotoBtn.classList.toggle('strip-active', TREE_MODE === 'motorcycle');
 }
 
 // ── Init — position pill after layout settles ──────────────────
@@ -124,29 +129,18 @@ if (treeSearch) {
   });
 }
 
-// ── Floating search bar scroll behaviour ──────────────────────
-const FLOAT_TOP_RATIO  = 0.44;  // target: 44% of viewport height
-const FLOAT_GAP        = 36;    // px gap above the browse section when docked
-const FLOAT_MIN_TOP    = 76;    // never go above the header (60px + 16px buffer)
-const CONTENT_GAP      = 48;    // min px below hero title/subtitle
-const MINIMIZE_HYSTERESIS = 40; // extra px the user must scroll back before expanding
-
-const MINIMIZE_TRANSITION = [
-  'transform 0.45s cubic-bezier(0.4,0,0.2,1)',
-  'max-width 0.45s cubic-bezier(0.4,0,0.2,1)',
-  'padding 0.35s ease',
-  'top 0.45s cubic-bezier(0.4,0,0.2,1)',
-  'background 0.35s ease',
-  'border-color 0.35s ease',
-  'box-shadow 0.35s ease',
-].join(', ');
+// ── Floating search bar + strip scroll behaviour ───────────────
+const FLOAT_TOP_RATIO = 0.44;
+const FLOAT_GAP       = 36;
+const FLOAT_MIN_TOP   = 76;
+const CONTENT_GAP     = 48;
+const HYSTERESIS      = 40;
 
 const floatArrow    = floatSearch ? floatSearch.querySelector('.float-arrow') : null;
 const heroInner     = document.querySelector('.hero-inner');
 const browseSection = document.querySelector('.browse-section');
 
-let _isSearchMinimized  = false;
-let _stateTransitionTimer = null;
+let _isMinimized = false;
 
 function positionFloatSearch() {
   if (!floatSearch || !browseSection) return;
@@ -156,74 +150,54 @@ function positionFloatSearch() {
   const targetTop  = window.innerHeight * FLOAT_TOP_RATIO;
   const maxTop     = browseRect.top - searchH - FLOAT_GAP;
 
-  // Hysteresis: once minimised, user must scroll back a bit more before expanding
-  const shouldMinimize = _isSearchMinimized
-    ? targetTop >= maxTop - MINIMIZE_HYSTERESIS
+  // Hysteresis prevents flickering at the boundary
+  const shouldMinimize = _isMinimized
+    ? targetTop >= maxTop - HYSTERESIS
     : targetTop >= maxTop;
 
-  if (shouldMinimize && !_isSearchMinimized) {
-    // ── Transition TO minimised ──
-    _isSearchMinimized = true;
-    clearTimeout(_stateTransitionTimer);
-
-    floatSearch.style.transition = MINIMIZE_TRANSITION;
-    // Force a layout flush so the browser knows the "from" state
-    floatSearch.getBoundingClientRect();
-    // Change values — browser animates from current → new
-    floatSearch.style.top = '76px';
+  if (shouldMinimize && !_isMinimized) {
+    _isMinimized = true;
     floatSearch.classList.add('search-minimized');
+    if (searchStrip) {
+      // Position strip at the top of the browse section, flush with tree
+      const stripTop = Math.max(FLOAT_MIN_TOP, browseRect.top + window.scrollY - window.scrollY + 16);
+      searchStrip.style.top = Math.max(FLOAT_MIN_TOP, browseRect.top + 16) + 'px';
+      searchStrip.classList.add('strip-visible');
+    }
 
-    // Clear inline transition once animation is done (keep scroll tracking clean)
-    _stateTransitionTimer = setTimeout(() => {
-      if (_isSearchMinimized) floatSearch.style.transition = '';
-    }, 500);
-
-  } else if (!shouldMinimize && _isSearchMinimized) {
-    // ── Transition OUT of minimised ──
-    _isSearchMinimized = false;
-    clearTimeout(_stateTransitionTimer);
-
-    floatSearch.style.transition = MINIMIZE_TRANSITION;
-    floatSearch.getBoundingClientRect();
+  } else if (!shouldMinimize && _isMinimized) {
+    _isMinimized = false;
     floatSearch.classList.remove('search-minimized');
-    // Return to the docking threshold (avoids big vertical jump)
-    floatSearch.style.top = maxTop + 'px';
+    if (searchStrip) searchStrip.classList.remove('strip-visible');
+    // Restore pill once the CSS opacity transition ends (~400ms)
+    setTimeout(() => movePillTo(TREE_MODE === 'car' ? modeCarBtn : modeMotoBtn), 420);
+  }
 
-    _stateTransitionTimer = setTimeout(() => {
-      if (!_isSearchMinimized) {
-        floatSearch.style.transition = '';
-        // Restore pill position now that layout is horizontal again
-        movePillTo(TREE_MODE === 'car' ? modeCarBtn : modeMotoBtn);
-      }
-    }, 500);
-
-  } else if (!shouldMinimize && !_isSearchMinimized) {
-    // ── Normal scroll tracking (no transition) ──
-    floatSearch.style.transition = '';
-
+  // Normal scroll-track (only while not minimized)
+  if (!_isMinimized) {
     let top = targetTop;
     if (top > maxTop) top = maxTop;
-
     if (heroInner) {
-      const heroBottom = heroInner.getBoundingClientRect().bottom;
-      const minFromContent = heroBottom + CONTENT_GAP;
-      if (top < minFromContent) top = minFromContent;
+      const minFromHero = heroInner.getBoundingClientRect().bottom + CONTENT_GAP;
+      if (top < minFromHero) top = minFromHero;
     }
     if (top < FLOAT_MIN_TOP) top = FLOAT_MIN_TOP;
-
     floatSearch.style.top = top + 'px';
   }
 
-  // Arrow visibility
+  // Arrow fades out when docked
   if (floatArrow) {
-    const hide = shouldMinimize || _isSearchMinimized;
-    floatArrow.style.opacity      = hide ? '0' : '';
+    const hide = shouldMinimize || _isMinimized;
+    floatArrow.style.opacity       = hide ? '0' : '';
     floatArrow.style.pointerEvents = hide ? 'none' : '';
   }
 }
 
 window.addEventListener('scroll', positionFloatSearch, { passive: true });
-window.addEventListener('resize', () => { positionFloatSearch(); movePillTo(TREE_MODE === 'car' ? modeCarBtn : modeMotoBtn); });
+window.addEventListener('resize', () => {
+  positionFloatSearch();
+  movePillTo(TREE_MODE === 'car' ? modeCarBtn : modeMotoBtn);
+});
 
 // ── Render car tree (NHTSA-backed: make → year → model) ────────
 function renderTree(makes) {
