@@ -143,12 +143,20 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// ── Spotlight live search ──────────────────────────────────────
-let _spTimer = null;
+// ── Spotlight live search (uses shared window.VEHICLE_SEARCH) ──
+let _spTimer   = null;
 let _spFocusIdx = -1;
 
+const TYPE_LABELS_SP = {
+  suv: 'SUV', pickup: 'Pickup', sedan: 'Sedan', hatchback: 'Hatchback',
+  wagon: 'Wagon', coupe: 'Coupé', convertible: 'Convertible',
+  minivan: 'Minivan', motorcycle: 'Motorcycle',
+};
+
 function _spItems() {
-  return spotlightResults ? Array.from(spotlightResults.querySelectorAll('.spotlight-result-item')) : [];
+  return spotlightResults
+    ? Array.from(spotlightResults.querySelectorAll('.spotlight-result-item'))
+    : [];
 }
 
 function _spMoveFocus(delta) {
@@ -164,80 +172,81 @@ if (spotlightInput) {
   spotlightInput.addEventListener('input', () => {
     clearTimeout(_spTimer);
     _spFocusIdx = -1;
-    _spTimer = setTimeout(() => _spRender(spotlightInput.value.trim()), 120);
+    _spTimer = setTimeout(() => _spRender(spotlightInput.value.trim()), 100);
   });
 
   spotlightInput.addEventListener('keydown', e => {
-    if (e.key === 'ArrowDown')  { e.preventDefault(); _spMoveFocus(1); }
-    if (e.key === 'ArrowUp')    { e.preventDefault(); _spMoveFocus(-1); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); _spMoveFocus(1); }
+    if (e.key === 'ArrowUp')   { e.preventDefault(); _spMoveFocus(-1); }
     if (e.key === 'Enter') {
-      const focused = spotlightResults?.querySelector('.sp-focused');
+      const focused = spotlightResults?.querySelector('.sp-focused') ||
+                      spotlightResults?.querySelector('.spotlight-result-item');
       if (focused) focused.click();
-      else {
-        // Navigate via the first result
-        const first = spotlightResults?.querySelector('.spotlight-result-item');
-        if (first) first.click();
-      }
     }
   });
+}
+
+function _spNavigate(r) {
+  if (r.type === 'make') {
+    window.location.href = `browse.html?make=${encodeURIComponent(r.make)}`;
+  } else if (r.yearHint) {
+    window.location.href = `car.html?make=${encodeURIComponent(r.make)}&model=${encodeURIComponent(r.model)}&year=${r.yearHint}`;
+  } else {
+    window.location.href = `browse.html?make=${encodeURIComponent(r.make)}&model=${encodeURIComponent(r.model)}`;
+  }
 }
 
 function _spRender(q) {
   if (!spotlightResults) return;
   if (!q) { spotlightResults.innerHTML = ''; return; }
 
-  const ql = q.toLowerCase().replace(/[\s\-\/\._]/g, '');
-  const SEARCH_MODE_SP = TREE_MODE; // inherit current car/moto mode
-  const db = window.VEHICLE_DB || [];
+  // Use the same engine as the main search bar
+  const results = (window.VEHICLE_SEARCH || (() => []))(q, TREE_MODE);
 
-  const hits = [];
-  for (const entry of db) {
-    const makeLow  = entry.make.toLowerCase();
-    const isMoto   = entry.models.every(m => m.types.includes('motorcycle'));
-    if (SEARCH_MODE_SP === 'car' && isMoto) continue;
-    if (SEARCH_MODE_SP === 'motorcycle' && !isMoto) continue;
-
-    for (const model of entry.models) {
-      const nameLow = model.name.toLowerCase();
-      const combined = (entry.make + ' ' + model.name).toLowerCase().replace(/[\s\-\/\._]/g, '');
-      const aliasMatch = (model.aliases || []).some(a => a.toLowerCase().includes(q.toLowerCase()));
-
-      if (combined.includes(ql) || aliasMatch) {
-        hits.push({ make: entry.make, model: model.name, types: model.types });
-        if (hits.length >= 8) break;
-      }
-    }
-    if (hits.length >= 8) break;
-  }
-
-  if (!hits.length) {
-    spotlightResults.innerHTML = `<div style="padding:16px 20px;color:var(--text-3);font-size:14px;">No results for "${escHtml(q)}"</div>`;
+  if (!results.length) {
+    spotlightResults.innerHTML = `
+      <div style="padding:16px 20px;color:var(--text-3);font-size:14px;">
+        No results for "<strong>${_spEsc(q)}</strong>"
+      </div>`;
     return;
   }
 
-  spotlightResults.innerHTML = hits.map((h, i) => `
-    <div class="spotlight-result-item" data-make="${escHtml(h.make)}" data-model="${escHtml(h.model)}" tabindex="-1">
-      <div class="spotlight-result-icon">${escHtml(h.make[0])}</div>
-      <div style="flex:1;min-width:0">
-        <div class="spotlight-result-name">${escHtml(h.make)} ${escHtml(h.model)}</div>
-        <div class="spotlight-result-sub">${escHtml(h.types.join(' · '))}</div>
-      </div>
-      <span class="spotlight-result-arrow">›</span>
-    </div>`
-  ).join('');
+  spotlightResults.innerHTML = results.map(r => {
+    if (r.type === 'make') {
+      return `
+        <div class="spotlight-result-item" data-idx="${results.indexOf(r)}" tabindex="-1">
+          <div class="spotlight-result-icon">${_spEsc(r.make[0])}</div>
+          <div style="flex:1;min-width:0">
+            <div class="spotlight-result-name">${_spEsc(r.make)}</div>
+            <div class="spotlight-result-sub">${_spEsc(r.country)} · ${r.modelCount} models</div>
+          </div>
+          <span class="spotlight-result-arrow">›</span>
+        </div>`;
+    }
+    const typeLabel = r.types.map(t => TYPE_LABELS_SP[t] || t).join(' · ');
+    const yearBadge = r.yearHint
+      ? ` <span style="color:var(--accent);font-size:11px;font-weight:700">${r.yearHint}</span>`
+      : '';
+    return `
+      <div class="spotlight-result-item" data-idx="${results.indexOf(r)}" tabindex="-1">
+        <div class="spotlight-result-icon">${_spEsc(r.model[0])}</div>
+        <div style="flex:1;min-width:0">
+          <div class="spotlight-result-name">${_spEsc(r.make)} ${_spEsc(r.model)}${yearBadge}</div>
+          <div class="spotlight-result-sub">${_spEsc(typeLabel)}</div>
+        </div>
+        <span class="spotlight-result-arrow">›</span>
+      </div>`;
+  }).join('');
 
+  // Store result data on DOM nodes for navigation
   spotlightResults.querySelectorAll('.spotlight-result-item').forEach(row => {
-    row.addEventListener('click', () => {
-      const make  = row.dataset.make;
-      const model = row.dataset.model;
-      // Navigate to browse page so user can pick year
-      window.location.href = `browse.html?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}`;
-    });
+    const r = results[parseInt(row.dataset.idx)];
+    row.addEventListener('click', () => _spNavigate(r));
   });
 }
 
-function escHtml(str) {
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function _spEsc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ── Init — position pill after layout settles ──────────────────
