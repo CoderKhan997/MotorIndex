@@ -50,6 +50,8 @@ function initPill() {
 }
 
 function movePillTo(btn) {
+  // Skip while minimized — pill is hidden and layout is vertical
+  if (_isSearchMinimized) return;
   if (!modePill || !modeToggle || !btn) return;
   // offsetLeft relative to toggle container
   modePill.style.width     = btn.offsetWidth + 'px';
@@ -188,7 +190,11 @@ function positionFloatSearch() {
     floatSearch.style.top = maxTop + 'px';
 
     _stateTransitionTimer = setTimeout(() => {
-      if (!_isSearchMinimized) floatSearch.style.transition = '';
+      if (!_isSearchMinimized) {
+        floatSearch.style.transition = '';
+        // Restore pill position now that layout is horizontal again
+        movePillTo(TREE_MODE === 'car' ? modeCarBtn : modeMotoBtn);
+      }
     }, 500);
 
   } else if (!shouldMinimize && !_isSearchMinimized) {

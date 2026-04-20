@@ -246,51 +246,107 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
   /* Transition applied by JS only during state changes (avoids scroll lag) */
 }
 
-/* ── Minimized state (slides to left when tree is in view) ── */
+/* ── Minimized state — vertical icon strip on the far left ── */
 .float-search.search-minimized {
-  transform: translateX(16px);
-  max-width: 232px;
-  padding: 10px 12px;
+  transform: translateX(12px);
+  max-width: 48px;
+  padding: 8px 0;
   background: var(--bg);
   border: 2px solid var(--border-2);
-  border-radius: 8px;
+  border-radius: 10px;
   box-shadow: 0 4px 28px var(--shadow-lg);
+  /* Use flex-column so children stack vertically */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
 }
 
+/* Pill indicator meaningless in vertical layout — hide it */
+.float-search.search-minimized .mode-pill { display: none; }
+
+/* Mode toggle becomes a vertical stack */
 .float-search.search-minimized .mode-toggle {
-  margin-bottom: 8px;
+  flex-direction: column;
   width: 100%;
+  padding: 4px 6px;
+  margin: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  gap: 2px;
+}
+
+/* Icon-only buttons — hide text with font-size 0 */
+.float-search.search-minimized .mode-btn {
+  font-size: 0;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  justify-content: center;
+  gap: 0;
+  border-radius: 6px;
+}
+.float-search.search-minimized .mode-btn svg {
+  width: 17px;
+  height: 17px;
+  opacity: 0.38;
+  /* Prevent the scale(1.18) active transform — too large in icon mode */
+  transform: none !important;
+  transition: opacity 0.2s;
+}
+.float-search.search-minimized .mode-btn.active {
+  background: var(--bg-3);
+}
+.float-search.search-minimized .mode-btn.active svg {
+  opacity: 1;
+  transform: none !important;
+}
+
+/* Divider between mode icons and search icon */
+.float-search.search-minimized::after {
+  content: '';
+  display: block;
+  width: 24px;
+  height: 1px;
+  background: var(--border);
+  margin: 4px auto;
+  flex-shrink: 0;
+}
+
+/* Search icon button — icon only, sits below the divider */
+.search-mini-open {
+  display: none; /* hidden in normal expanded state */
+}
+.float-search.search-minimized .search-mini-open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0;         /* hides "Search vehicles" text node */
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin: 0 auto 2px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.float-search.search-minimized .search-mini-open:hover {
+  background: var(--bg-3);
+  color: var(--text);
+}
+.float-search.search-minimized .search-mini-open svg {
+  width: 15px;
+  height: 15px;
 }
 
 /* Hide search box and arrow in minimized state */
 .float-search.search-minimized .search-box  { display: none; }
 .float-search.search-minimized .float-arrow { display: none !important; }
-
-/* Mini search-open button — only shown in minimized state */
-.search-mini-open {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  width: 100%;
-  padding: 9px 0;
-  background: var(--bg-2);
-  border: 1.5px solid var(--border);
-  border-radius: var(--radius);
-  font-family: 'Roboto', sans-serif;
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  color: var(--text-2);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.search-mini-open:hover {
-  background: var(--bg-3);
-  border-color: var(--border-2);
-  color: var(--text);
-}
-.float-search.search-minimized .search-mini-open { display: flex; }
 
 .float-arrow {
   display: flex;
