@@ -33,10 +33,14 @@ const MOTO_MAKES = (window.VEHICLE_DB || [])
 const treeRoot    = document.getElementById('treeRoot');
 const treeSearch  = document.getElementById('treeSearch');
 const floatSearch = document.getElementById('floatSearch');
-const searchStrip = document.getElementById('searchStrip');
+const searchStrip    = document.getElementById('searchStrip');
 const stripCarBtn    = document.getElementById('stripCarBtn');
 const stripMotoBtn   = document.getElementById('stripMotoBtn');
 const stripSearchBtn = document.getElementById('stripSearchBtn');
+const spotlightOverlay = document.getElementById('spotlightOverlay');
+const spotlightInput   = document.getElementById('spotlightInput');
+const spotlightResults = document.getElementById('spotlightResults');
+const spotlightClose   = document.getElementById('spotlightClose');
 const modeCarBtn  = document.getElementById('modeCarBtn');
 const modeMotoBtn = document.getElementById('modeMotoBtn');
 const modePill    = document.getElementById('modePill');
@@ -99,14 +103,141 @@ if (modeCarBtn)  modeCarBtn.addEventListener('click',  () => switchMode('car'));
 if (modeMotoBtn) modeMotoBtn.addEventListener('click', () => switchMode('motorcycle'));
 
 // Strip button handlers
-if (stripCarBtn)    stripCarBtn.addEventListener('click',    () => { switchMode('car');          _syncStrip(); });
-if (stripMotoBtn)   stripMotoBtn.addEventListener('click',   () => { switchMode('motorcycle');   _syncStrip(); });
-if (stripSearchBtn) stripSearchBtn.addEventListener('click', () => { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+if (stripCarBtn)    stripCarBtn.addEventListener('click',    () => { switchMode('car');         _syncStrip(); });
+if (stripMotoBtn)   stripMotoBtn.addEventListener('click',   () => { switchMode('motorcycle'); _syncStrip(); });
+if (stripSearchBtn) stripSearchBtn.addEventListener('click', openSpotlight);
 
 function _syncStrip() {
   if (!stripCarBtn || !stripMotoBtn) return;
   stripCarBtn.classList.toggle('strip-active',  TREE_MODE === 'car');
   stripMotoBtn.classList.toggle('strip-active', TREE_MODE === 'motorcycle');
+}
+
+// ── Spotlight search overlay ───────────────────────────────────
+function openSpotlight() {
+  if (!spotlightOverlay) return;
+  spotlightOverlay.classList.add('spotlight-open');
+  setTimeout(() => spotlightInput && spotlightInput.focus(), 60);
+}
+
+function closeSpotlight() {
+  if (!spotlightOverlay) return;
+  spotlightOverlay.classList.remove('spotlight-open');
+  if (spotlightInput)   spotlightInput.value = '';
+  if (spotlightResults) spotlightResults.innerHTML = '';
+}
+
+if (spotlightClose) spotlightClose.addEventListener('click', closeSpotlight);
+
+// Click backdrop (not the box itself) to close
+if (spotlightOverlay) {
+  spotlightOverlay.addEventListener('click', e => {
+    if (e.target === spotlightOverlay) closeSpotlight();
+  });
+}
+
+// Escape key
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && spotlightOverlay?.classList.contains('spotlight-open')) {
+    closeSpotlight();
+  }
+});
+
+// ── Spotlight live search ──────────────────────────────────────
+let _spTimer = null;
+let _spFocusIdx = -1;
+
+function _spItems() {
+  return spotlightResults ? Array.from(spotlightResults.querySelectorAll('.spotlight-result-item')) : [];
+}
+
+function _spMoveFocus(delta) {
+  const items = _spItems();
+  if (!items.length) return;
+  items.forEach(i => i.classList.remove('sp-focused'));
+  _spFocusIdx = Math.max(0, Math.min(items.length - 1, _spFocusIdx + delta));
+  items[_spFocusIdx].classList.add('sp-focused');
+  items[_spFocusIdx].scrollIntoView({ block: 'nearest' });
+}
+
+if (spotlightInput) {
+  spotlightInput.addEventListener('input', () => {
+    clearTimeout(_spTimer);
+    _spFocusIdx = -1;
+    _spTimer = setTimeout(() => _spRender(spotlightInput.value.trim()), 120);
+  });
+
+  spotlightInput.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown')  { e.preventDefault(); _spMoveFocus(1); }
+    if (e.key === 'ArrowUp')    { e.preventDefault(); _spMoveFocus(-1); }
+    if (e.key === 'Enter') {
+      const focused = spotlightResults?.querySelector('.sp-focused');
+      if (focused) focused.click();
+      else {
+        // Navigate via the first result
+        const first = spotlightResults?.querySelector('.spotlight-result-item');
+        if (first) first.click();
+      }
+    }
+  });
+}
+
+function _spRender(q) {
+  if (!spotlightResults) return;
+  if (!q) { spotlightResults.innerHTML = ''; return; }
+
+  const ql = q.toLowerCase().replace(/[\s\-\/\._]/g, '');
+  const SEARCH_MODE_SP = TREE_MODE; // inherit current car/moto mode
+  const db = window.VEHICLE_DB || [];
+
+  const hits = [];
+  for (const entry of db) {
+    const makeLow  = entry.make.toLowerCase();
+    const isMoto   = entry.models.every(m => m.types.includes('motorcycle'));
+    if (SEARCH_MODE_SP === 'car' && isMoto) continue;
+    if (SEARCH_MODE_SP === 'motorcycle' && !isMoto) continue;
+
+    for (const model of entry.models) {
+      const nameLow = model.name.toLowerCase();
+      const combined = (entry.make + ' ' + model.name).toLowerCase().replace(/[\s\-\/\._]/g, '');
+      const aliasMatch = (model.aliases || []).some(a => a.toLowerCase().includes(q.toLowerCase()));
+
+      if (combined.includes(ql) || aliasMatch) {
+        hits.push({ make: entry.make, model: model.name, types: model.types });
+        if (hits.length >= 8) break;
+      }
+    }
+    if (hits.length >= 8) break;
+  }
+
+  if (!hits.length) {
+    spotlightResults.innerHTML = `<div style="padding:16px 20px;color:var(--text-3);font-size:14px;">No results for "${escHtml(q)}"</div>`;
+    return;
+  }
+
+  spotlightResults.innerHTML = hits.map((h, i) => `
+    <div class="spotlight-result-item" data-make="${escHtml(h.make)}" data-model="${escHtml(h.model)}" tabindex="-1">
+      <div class="spotlight-result-icon">${escHtml(h.make[0])}</div>
+      <div style="flex:1;min-width:0">
+        <div class="spotlight-result-name">${escHtml(h.make)} ${escHtml(h.model)}</div>
+        <div class="spotlight-result-sub">${escHtml(h.types.join(' · '))}</div>
+      </div>
+      <span class="spotlight-result-arrow">›</span>
+    </div>`
+  ).join('');
+
+  spotlightResults.querySelectorAll('.spotlight-result-item').forEach(row => {
+    row.addEventListener('click', () => {
+      const make  = row.dataset.make;
+      const model = row.dataset.model;
+      // Navigate to browse page so user can pick year
+      window.location.href = `browse.html?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}`;
+    });
+  });
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ── Init — position pill after layout settles ──────────────────
@@ -136,11 +267,31 @@ const FLOAT_MIN_TOP   = 76;
 const CONTENT_GAP     = 48;
 const HYSTERESIS      = 40;
 
+// Vertical offset of the strip from the top of the visible viewport
+// (tracks scroll so it stays comfortably in view beside the tree)
+const STRIP_VIEWPORT_TOP = 120;  // px from top of viewport
+const STRIP_MAX_TOP      = 76;   // never go above header
+
 const floatArrow    = floatSearch ? floatSearch.querySelector('.float-arrow') : null;
 const heroInner     = document.querySelector('.hero-inner');
 const browseSection = document.querySelector('.browse-section');
 
 let _isMinimized = false;
+
+function _positionStrip() {
+  if (!searchStrip || !treeRoot) return;
+
+  // Horizontal: center the strip in the gap between viewport left and tree left edge
+  const treeRect  = treeRoot.getBoundingClientRect();
+  const gapWidth  = treeRect.left;           // px between viewport left and tree
+  const stripW    = searchStrip.offsetWidth;
+  const stripLeft = Math.max(8, (gapWidth - stripW) / 2);
+  searchStrip.style.left = stripLeft + 'px';
+
+  // Vertical: fixed viewport position that scrolls with the user
+  const desiredTop = STRIP_VIEWPORT_TOP;
+  searchStrip.style.top = Math.max(STRIP_MAX_TOP, desiredTop) + 'px';
+}
 
 function positionFloatSearch() {
   if (!floatSearch || !browseSection) return;
@@ -159,9 +310,7 @@ function positionFloatSearch() {
     _isMinimized = true;
     floatSearch.classList.add('search-minimized');
     if (searchStrip) {
-      // Position strip at the top of the browse section, flush with tree
-      const stripTop = Math.max(FLOAT_MIN_TOP, browseRect.top + window.scrollY - window.scrollY + 16);
-      searchStrip.style.top = Math.max(FLOAT_MIN_TOP, browseRect.top + 16) + 'px';
+      _positionStrip();
       searchStrip.classList.add('strip-visible');
     }
 
@@ -169,8 +318,11 @@ function positionFloatSearch() {
     _isMinimized = false;
     floatSearch.classList.remove('search-minimized');
     if (searchStrip) searchStrip.classList.remove('strip-visible');
-    // Restore pill once the CSS opacity transition ends (~400ms)
     setTimeout(() => movePillTo(TREE_MODE === 'car' ? modeCarBtn : modeMotoBtn), 420);
+
+  } else if (_isMinimized) {
+    // Keep strip positioned while scrolling in minimized state
+    _positionStrip();
   }
 
   // Normal scroll-track (only while not minimized)

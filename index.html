@@ -95,7 +95,7 @@
       </div>
     </div>
 
-    <!-- Vertical icon strip: fades in beside the tree when the search bar is minimized -->
+    <!-- Vertical icon strip: slides in beside the tree when the search bar is minimized -->
     <div class="search-strip" id="searchStrip" role="navigation" aria-label="Quick navigation">
       <button class="strip-btn strip-active" id="stripCarBtn" title="Cars" aria-label="Cars">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true">
@@ -112,11 +112,32 @@
         </svg>
       </button>
       <div class="strip-sep"></div>
-      <button class="strip-btn" id="stripSearchBtn" title="Open search" aria-label="Open search">
+      <button class="strip-btn" id="stripSearchBtn" title="Search" aria-label="Open search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true">
           <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
         </svg>
       </button>
+    </div>
+
+    <!-- Spotlight search overlay -->
+    <div class="spotlight-overlay" id="spotlightOverlay" role="dialog" aria-modal="true" aria-label="Search vehicles">
+      <div class="spotlight-box" id="spotlightBox">
+        <div class="spotlight-input-row">
+          <svg class="spotlight-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <input
+            type="text"
+            class="spotlight-input"
+            id="spotlightInput"
+            placeholder="Search vehicles..."
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <button class="spotlight-close" id="spotlightClose" aria-label="Close search">esc</button>
+        </div>
+        <div class="spotlight-results" id="spotlightResults"></div>
+      </div>
     </div>
 
     <section class="browse-section">
