@@ -1644,25 +1644,42 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 }
 
 .quick-facts-header {
-  padding: 12px 16px;
+  padding: 10px 16px 8px;
   background: var(--text);
   color: var(--bg);
   font-family: 'Roboto', sans-serif;
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  font-weight: 700;
   transition: background var(--transition), color var(--transition);
 }
 
+.quick-facts-label {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  opacity: 0.6;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.quick-facts-subtitle {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.3;
+  color: var(--bg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .quick-facts-body {
-  padding: 8px 0;
+  padding: 4px 0;
 }
 
 .fact-row {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  padding: 10px 16px;
+  align-items: center;
+  padding: 8px 16px;
   gap: 12px;
   border-bottom: 1px solid var(--border);
   transition: background 0.15s;
@@ -1672,9 +1689,10 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 .fact-row:hover { background: var(--bg-3); }
 
 .fact-key {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-3);
   flex-shrink: 0;
+  letter-spacing: 0.02em;
 }
 
 .fact-val {
@@ -1683,6 +1701,50 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
   font-weight: 700;
   color: var(--text);
   text-align: right;
+}
+
+/* ── MPG unit toggle inside fact-val ─────────────────────────── */
+.mpg-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+}
+
+.mpg-figures {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  text-align: right;
+}
+
+.mpg-toggle {
+  display: flex;
+  align-items: center;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 2px;
+  gap: 0;
+}
+
+.mpg-unit-btn {
+  padding: 2px 8px;
+  border-radius: 100px;
+  border: none;
+  background: transparent;
+  font-family: 'Roboto', sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s;
+  white-space: nowrap;
+}
+.mpg-unit-btn.mpg-active {
+  background: var(--text);
+  color: var(--bg);
 }
 
 /* ── External Links ───────────────────────────────────────── */

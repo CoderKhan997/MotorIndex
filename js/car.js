@@ -384,6 +384,7 @@ function _parseProduction(raw) {
 // canSpecs   — NHTSA Canadian specs array (fallback, US/Canada vehicles only)
 function renderQuickFacts(wiki, ratings, wikiSpecs, canSpecs) {
   const ws = (typeof wikiSpecs === 'object' && wikiSpecs !== null) ? wikiSpecs : {};
+  const hasWiki = Object.keys(ws).length > 0;
 
   // Helper: try multiple infobox field names, return first hit
   function wi(...keys) {
@@ -401,112 +402,176 @@ function renderQuickFacts(wiki, ratings, wikiSpecs, canSpecs) {
     return hit?.Specs_Value?.trim() || null;
   }
 
-  // ── Engine ──────────────────────────────────────────────────
-  // Infobox fields tried in order of specificity
-  let engineStr = _tidySpec(_filterByYear(wi('engine', 'engine_type', 'engines', 'powertrain'), year));
+  const DASH = '—';
 
-  // Fallback: build from NHTSA Canadian specs
+  // ── Subtitle ─────────────────────────────────────────────────
+  // "2020 Toyota RAV4  ·  XLE AWD" (trim from NHTSA VehicleDescription if available)
+  let trimPart = '';
+  if (ratings?.detail?.VehicleDescription) {
+    // NHTSA format: "2020 TOYOTA RAV4 XLE AWD" → strip "YEAR MAKE MODEL "
+    const prefix = `${year} ${make.toUpperCase()} ${model.toUpperCase()} `;
+    const desc   = ratings.detail.VehicleDescription.toUpperCase();
+    const trimRaw = desc.startsWith(prefix) ? ratings.detail.VehicleDescription.substring(prefix.length).trim() : '';
+    // Title-case it
+    trimPart = trimRaw.replace(/\b\w/g, c => c.toUpperCase());
+  }
+  const subtitleText = trimPart
+    ? `${year} ${make} ${model} · ${trimPart}`
+    : `${year} ${make} ${model}`;
+
+  // Update the header subtitle
+  const header = document.querySelector('.quick-facts-header');
+  if (header) {
+    header.innerHTML = `
+      <div class="quick-facts-label">QUICK FACTS</div>
+      <div class="quick-facts-subtitle" title="${escHtml(subtitleText)}">${escHtml(subtitleText)}</div>`;
+  }
+
+  // ── Engine ───────────────────────────────────────────────────
+  let engineStr = _tidySpec(_filterByYear(wi('engine', 'engine_type', 'engines', 'powertrain'), year));
   if (!engineStr) {
     const dispL     = ca('displacement (l') || ca('engine displacement (l');
     const cylinders = ca('number of cylinder') || ca('cylinders');
     const config    = ca('engine configuration') || ca('configuration');
     if (config || cylinders || dispL) {
       engineStr = [config, cylinders ? `${cylinders}-cyl` : null, dispL ? `${dispL}L` : null]
-        .filter(Boolean).join(', ');
+        .filter(Boolean).join(' ');
     }
   }
 
-  // ── Horsepower ──────────────────────────────────────────────
+  // ── Horsepower ───────────────────────────────────────────────
   let hpStr = _filterByYear(wi('horsepower', 'power', 'max_power'), year);
-  if (hpStr && !/hp|kw|ps\b/i.test(hpStr)) hpStr = `${hpStr} hp`;
-
-  // Fallback: regex scan of Wikipedia summary text
+  if (hpStr && !/hp|kw|ps\b/i.test(hpStr)) hpStr += ' hp';
   if (!hpStr && wiki?.summary) {
     const m = wiki.summary.match(/(\d[\d,–\-]*)\s*(?:hp|horsepower|bhp)\b/i);
     if (m) hpStr = `${m[1]} hp`;
   }
 
-  // ── Torque ──────────────────────────────────────────────────
+  // ── Torque ───────────────────────────────────────────────────
   let torqueStr = null;
   const torqueLbFt = _filterByYear(wi('torqueft-lbf', 'torqueft_lbf', 'torque_ft_lbf', 'torque_lbft'), year);
   const torqueNm   = _filterByYear(wi('torquenm', 'torque_nm', 'torque'), year);
-  if (torqueLbFt) {
-    torqueStr = /lb|ft/i.test(torqueLbFt) ? torqueLbFt : `${torqueLbFt} lb-ft`;
-  } else if (torqueNm) {
-    torqueStr = /n.?m/i.test(torqueNm) ? torqueNm : `${torqueNm} N·m`;
-  }
-
-  // Fallback: regex scan of Wikipedia summary
+  if (torqueLbFt) torqueStr = /lb|ft/i.test(torqueLbFt) ? torqueLbFt : `${torqueLbFt} lb-ft`;
+  else if (torqueNm) torqueStr = /n.?m/i.test(torqueNm) ? torqueNm : `${torqueNm} N·m`;
   if (!torqueStr && wiki?.summary) {
     const m = wiki.summary.match(/(\d[\d,–\-]*)\s*(?:lb-ft|lb·ft|pound-feet|ft·lb)\b/i);
     if (m) torqueStr = `${m[1]} lb-ft`;
   }
 
-  // ── Drivetrain ──────────────────────────────────────────────
+  // ── Drivetrain ───────────────────────────────────────────────
   let driveStr = _filterByYear(wi('drive_wheel', 'drive_type', 'drivetrain', 'drive'), year);
   if (!driveStr) driveStr = ca('drive type') || ca('drive');
-
-  // ── Transmission ────────────────────────────────────────────
-  let transStr = _tidySpec(_filterByYear(wi('transmission', 'gearbox', 'trans'), year));
-  if (!transStr) {
-    const style  = ca('transmission style') || ca('transmission type');
-    const speeds = ca('transmission speeds') || ca('speeds');
-    if (style || speeds) {
-      transStr = [speeds ? `${speeds}-speed` : null, style].filter(Boolean).join(' ');
-    }
-  }
-
-  // ── Fuel type ───────────────────────────────────────────────
-  const fuelStr = _filterByYear(wi('fuel_type', 'fuel'), year) || ca('fuel type - primary') || ca('fuel type');
 
   // ── Seats ────────────────────────────────────────────────────
   const seatsRaw = wi('seats', 'capacity', 'seating_capacity', 'passengers', 'seating');
   let seatsStr = null;
   if (seatsRaw) {
-    // Strip trailing non-numeric suffixes e.g. "5 passengers" → "5"
     const m = seatsRaw.match(/(\d[\d–\-]*)/);
-    seatsStr = m ? m[1].replace(/\s/g, '') + ' seats' : seatsRaw;
+    seatsStr = m ? m[1].replace(/\s/g, '') : seatsRaw;
   }
   if (!seatsStr) {
-    const nhtsaSeats = ca('seating capacity') || ca('seating') || ca('passengers');
-    if (nhtsaSeats) seatsStr = nhtsaSeats + ' seats';
+    seatsStr = ca('seating capacity') || ca('seating') || ca('passengers');
   }
 
-  // ── Production years ─────────────────────────────────────────
-  const productionRaw = wi('production', 'years', 'production_run', 'model_years');
-  const productionStr = _parseProduction(productionRaw);
+  // ── Fuel economy (MPG ↔ L/100km toggle) ──────────────────────
+  // Wikipedia fields: fuel_economy (generic), fuel_economy_imp (UK mpg),
+  // fuel_economy_us (US mpg), fuel_economy_met (L/100km)
+  // Parse city / highway from strings like "25 mpg city, 35 mpg hwy" or "25/35 mpg"
+  function parseMpg(raw) {
+    if (!raw) return null;
+    // "city / hwy" slash format: e.g. "25/35" or "25/35 mpg"
+    const slashM = raw.match(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/);
+    if (slashM) return { city: parseFloat(slashM[1]), hwy: parseFloat(slashM[2]) };
+    // "X city Y hwy" or "X mpg city, Y mpg hwy" etc.
+    const cityM = raw.match(/(\d+(?:\.\d+)?)\s*(?:mpg\s*)?city/i);
+    const hwyM  = raw.match(/(\d+(?:\.\d+)?)\s*(?:mpg\s*)?(?:hwy|highway|motorway)/i);
+    if (cityM || hwyM) return { city: cityM ? parseFloat(cityM[1]) : null, hwy: hwyM ? parseFloat(hwyM[1]) : null };
+    // Single number
+    const singleM = raw.match(/(\d+(?:\.\d+)?)/);
+    if (singleM) return { city: null, hwy: parseFloat(singleM[1]) };
+    return null;
+  }
 
-  // ── Assemble ─────────────────────────────────────────────────
-  const facts = [
-    { key: 'Make',  val: make  },
-    { key: 'Model', val: model },
-    { key: 'Year',  val: year  },
+  const fuelRawUs  = wi('fuel_economy_us', 'fuel_economy', 'fuel economy');
+  const fuelRawImp = wi('fuel_economy_imp');
+  const fuelRawMet = wi('fuel_economy_met');
+
+  // Try US MPG first, then imperial, then NHTSA
+  let mpgData = parseMpg(fuelRawUs) || parseMpg(fuelRawImp);
+  if (!mpgData) {
+    const nhtsaCity = ca('city mpg') || ca('city fuel') || ca('mpg city');
+    const nhtsaHwy  = ca('highway mpg') || ca('hwy mpg') || ca('highway fuel');
+    if (nhtsaCity || nhtsaHwy) {
+      mpgData = { city: nhtsaCity ? parseFloat(nhtsaCity) : null, hwy: nhtsaHwy ? parseFloat(nhtsaHwy) : null };
+    }
+  }
+
+  let lData = parseMpg(fuelRawMet);
+  // Convert MPG → L/100km if we have mpgData but no metric
+  if (mpgData && !lData) {
+    lData = {
+      city: mpgData.city ? +(235.214 / mpgData.city).toFixed(1) : null,
+      hwy:  mpgData.hwy  ? +(235.214 / mpgData.hwy).toFixed(1)  : null,
+    };
+  }
+  // Convert L/100km → MPG if we only have metric
+  if (lData && !mpgData) {
+    mpgData = {
+      city: lData.city ? +( 235.214 / lData.city).toFixed(0) : null,
+      hwy:  lData.hwy  ? +(235.214 / lData.hwy).toFixed(0)   : null,
+    };
+  }
+
+  function fmtFuel(d, unit) {
+    if (!d) return DASH;
+    if (unit === 'mpg') {
+      const parts = [d.city ? `${Math.round(d.city)} city` : null, d.hwy ? `${Math.round(d.hwy)} hwy` : null].filter(Boolean);
+      return parts.length ? parts.join(' / ') + ' mpg' : DASH;
+    } else {
+      const parts = [d.city ? `${d.city.toFixed(1)} city` : null, d.hwy ? `${d.hwy.toFixed(1)} hwy` : null].filter(Boolean);
+      return parts.length ? parts.join(' / ') + ' L/100km' : DASH;
+    }
+  }
+
+  // ── Build rows ────────────────────────────────────────────────
+  // Each row: { key, val } — val is a plain string OR raw HTML string (flagged with html:true)
+  const rows = [
+    { key: 'Engine',     val: engineStr  || DASH },
+    { key: 'Horsepower', val: hpStr      || DASH },
+    { key: 'Torque',     val: torqueStr  || DASH },
+    { key: 'Drivetrain', val: driveStr   || DASH },
+    { key: 'Seats',      val: seatsStr   || DASH },
+    { key: 'Fuel',       val: null, mpg: true },   // rendered specially
   ];
 
-  if (productionStr) facts.push({ key: 'Production',    val: productionStr });
-  if (engineStr)     facts.push({ key: 'Engine',        val: engineStr });
-  if (hpStr)         facts.push({ key: 'Horsepower',    val: hpStr });
-  if (torqueStr)     facts.push({ key: 'Torque',        val: torqueStr });
-  if (driveStr)      facts.push({ key: 'Drivetrain',    val: driveStr });
-  if (transStr)      facts.push({ key: 'Transmission',  val: transStr });
-  if (fuelStr)       facts.push({ key: 'Fuel',          val: fuelStr });
-  if (seatsStr)      facts.push({ key: 'Seating',       val: seatsStr });
+  const mpgHtml = (mpgData || lData) ? `
+    <div class="mpg-wrap">
+      <span class="mpg-figures" id="mpgFigures">${escHtml(fmtFuel(mpgData, 'mpg'))}</span>
+      <div class="mpg-toggle" role="group" aria-label="Fuel economy unit">
+        <button class="mpg-unit-btn mpg-active" data-unit="mpg">MPG</button>
+        <button class="mpg-unit-btn" data-unit="l100">L/100</button>
+      </div>
+    </div>` : `<span class="fact-val">${DASH}</span>`;
 
-  if (ratings?.detail?.VehicleDescription) {
-    facts.push({ key: 'Variant', val: ratings.detail.VehicleDescription });
+  els.quickFactsBody.innerHTML = rows.map(r => {
+    const valHtml = r.mpg
+      ? mpgHtml
+      : `<span class="fact-val">${escHtml(String(r.val))}</span>`;
+    return `<div class="fact-row"><span class="fact-key">${escHtml(r.key)}</span>${valHtml}</div>`;
+  }).join('');
+
+  // ── Wire MPG toggle ───────────────────────────────────────────
+  if (mpgData || lData) {
+    els.quickFactsBody.querySelectorAll('.mpg-unit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        els.quickFactsBody.querySelectorAll('.mpg-unit-btn').forEach(b => b.classList.remove('mpg-active'));
+        btn.classList.add('mpg-active');
+        const unit = btn.dataset.unit;
+        const fig  = document.getElementById('mpgFigures');
+        if (fig) fig.textContent = fmtFuel(unit === 'mpg' ? mpgData : lData, unit === 'mpg' ? 'mpg' : 'l100');
+      });
+    });
   }
-
-  const hasSpecs = engineStr || hpStr || torqueStr || driveStr || transStr;
-  if (!hasSpecs) {
-    facts.push({ key: 'Specs', val: 'Loading…' });
-  }
-
-  els.quickFactsBody.innerHTML = facts.map(f => `
-    <div class="fact-row">
-      <span class="fact-key">${escHtml(f.key)}</span>
-      <span class="fact-val">${escHtml(String(f.val))}</span>
-    </div>`
-  ).join('');
 }
 
 // ── External Links ─────────────────────────────────────────────
